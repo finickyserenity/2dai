@@ -75,17 +75,17 @@ main { padding: 28px 24px 56px; }
 .empty-state strong { color: var(--ink); }
 .empty-state span { font-size: 13px; }
 .sheet-backdrop { position: fixed; inset: 0; z-index: 20; display: flex; align-items: end; justify-content: center; background: rgba(20, 35, 49, .3); }
-.options-sheet { width: min(100%, 620px); max-height: calc(100svh - 18px); overflow-y: auto; box-sizing: border-box; padding: 10px 24px 28px; border-radius: 8px 8px 0 0; background: white; box-shadow: 0 -12px 35px rgba(19, 48, 73, .18); }
+.options-sheet { width: min(100%, 620px); max-height: calc(100svh - 18px); overflow-y: auto; overscroll-behavior: contain; box-sizing: border-box; padding: 10px 24px calc(28px + env(safe-area-inset-bottom)); border-radius: 8px 8px 0 0; background: white; box-shadow: 0 -12px 35px rgba(19, 48, 73, .18); }
 .sheet-handle { width: 44px; height: 4px; margin: 0 auto 18px; border-radius: 2px; background: var(--line-strong); }
-.sheet-heading { display: flex; align-items: start; justify-content: space-between; gap: 20px; margin-bottom: 22px; }
+.sheet-heading { position: sticky; top: 0; z-index: 1; display: flex; align-items: start; justify-content: space-between; gap: 20px; margin-bottom: 12px; padding-bottom: 10px; background: white; }
 .sheet-heading h3 { margin: 2px 0 0; font: 700 21px/1.25 var(--display); color: var(--ink); }
 .text-button { flex: none; }
 .text-button:disabled { opacity: .45; cursor: default; }
 .option-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .option-grid .subject-field { grid-column: 1 / -1; }
 .option-grid .due-filters-field { grid-column: 1 / -1; }
-.option-grid label { display: grid; gap: 6px; color: var(--muted); font-size: 12px; font-weight: 700; }
-.option-grid input, .option-grid select, .option-grid textarea { width: 100%; box-sizing: border-box; padding: 10px; border: 1px solid var(--line); border-radius: 5px; background: white; color: var(--ink); font: 500 14px/1.45 var(--body); }
+.option-grid label { min-width: 0; display: grid; gap: 6px; color: var(--muted); font-size: 12px; font-weight: 700; }
+.option-grid input, .option-grid select, .option-grid textarea { width: 100%; min-width: 0; box-sizing: border-box; padding: 10px; border: 1px solid var(--line); border-radius: 5px; background: white; color: var(--ink); font: 500 14px/1.45 var(--body); }
 .option-grid textarea { min-height: calc(2 * 1.45em + 20px); resize: vertical; }
 .toggle-row { display: flex; justify-content: space-between; align-items: center; gap: 18px; margin-top: 18px; padding: 14px 0; border-block: 1px solid var(--line); }
 .toggle-row span { display: grid; gap: 2px; }
@@ -234,7 +234,13 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
   .task-row { grid-template-columns: 38px minmax(0, 1fr) auto; }
   .task-actions button { width: 34px; }
   .task-actions button:last-child { display: none; }
-  .option-grid { grid-template-columns: 1fr; }
+  .options-sheet { padding-inline: 16px; }
+  .sheet-handle { margin-bottom: 12px; }
+  .option-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px 12px; }
+  .option-grid input, .option-grid select, .option-grid textarea { padding: 8px 10px; }
+  .option-grid input[type="date"], .option-grid input[type="time"] { min-height: 41px; -webkit-appearance: none; appearance: none; text-align: left; }
+  .toggle-row { margin-top: 14px; padding: 10px 0; }
+  .archive-button { margin-top: 10px; }
   .lists-main { padding-inline: 10px; }
   .list-titlebar { align-items: start; }
   .list-titlebar h2 { font-size: 25px; }
@@ -260,4 +266,9 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
   .import-source-actions { flex-wrap: wrap; }
   .import-source-actions .preview-button { margin-left: 0; flex: 1; justify-content: center; }
   .import-section-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* iOS Safari zooms the page when a focused field's text is under 16px. */
+@media (pointer: coarse) {
+  input, select, textarea { font-size: 16px !important; }
 }
