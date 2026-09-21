@@ -258,6 +258,16 @@ test('sorts lists and section options while persisting section display preferenc
   await page.getByRole('button', { name: 'Collapse Persistent section' }).click()
   await expect(page.getByRole('button', { name: 'Expand Persistent section' })).toBeVisible()
 
+  const persistentName = page.locator('.raw-section-heading > strong', { hasText: 'Persistent section' })
+  await persistentName.click()
+  await expect(page.getByRole('button', { name: 'Collapse Persistent section' })).toBeVisible()
+  await page.getByRole('button', { name: 'Rename Persistent section' }).click()
+  await page.getByRole('textbox', { name: 'Section name' }).click()
+  await page.getByRole('button', { name: 'Cancel rename' }).click()
+  await expect(page.getByRole('button', { name: 'Collapse Persistent section' })).toBeVisible()
+  await persistentName.click()
+  await expect(page.getByRole('button', { name: 'Expand Persistent section' })).toBeVisible()
+
   await page.getByRole('button', { name: 'New section' }).click()
   await page.getByRole('textbox', { name: 'Section name' }).fill('Alpha 10')
   await page.getByRole('button', { name: 'Create' }).click()

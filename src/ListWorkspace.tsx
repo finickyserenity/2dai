@@ -450,7 +450,7 @@ function SheetSection({ section, name, tasks, sectionTasks = [], focusedTaskId, 
 
   return (
     <section className="raw-section">
-      <div className="raw-section-heading">
+      <div className="raw-section-heading" onClick={(event) => { if (!(event.target as Element).closest('button, form')) setCollapsed((value) => !value) }}>
         <button className="raw-section-toggle" type="button" onClick={() => setCollapsed((value) => !value)} aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${name}`}>
           <ChevronRight className={collapsed ? '' : 'open'} size={17} />
         </button>
