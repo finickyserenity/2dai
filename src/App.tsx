@@ -202,11 +202,12 @@ function App({ onRefreshApp }: AppProps) {
     const now = new Date()
     const effectiveDate = snapshot.activeDay
     await db.transaction('rw', db.tasks, db.events, async () => {
-      const storedTask = await db.tasks.get(task.id)
+      let storedTask = await db.tasks.get(task.id)
       if (!storedTask) return
       const existingEvent = managedEvents.get(task.id)
       if (existingEvent) {
-        if (existingEvent.action !== action) return
+        // A delayed or skipped task can still be completed; any other mismatch is ignored.
+        if (existingEvent.action !== action && action !== 'completed') return
         const previousCompletion = snapshot.events
           .filter((event) => event.taskId === task.id && event.action === 'completed' && event.createdAt < existingEvent.createdAt)
           .sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0]
@@ -231,7 +232,9 @@ function App({ onRefreshApp }: AppProps) {
             : {},
           updatedAt: now.toISOString(),
         })
-        return
+        if (existingEvent.action === action) return
+        storedTask = await db.tasks.get(task.id)
+        if (!storedTask) return
       }
 
       await db.events.add({

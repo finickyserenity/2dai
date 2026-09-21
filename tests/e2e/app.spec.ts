@@ -124,6 +124,24 @@ test('adds, edits, and completes tasks offline without randomUUID', async ({ pag
   expect(stored.completed).toBe(true)
 })
 
+test('completes a delayed task from its checkbox', async ({ page }) => {
+  const entry = page.getByRole('textbox', { name: 'New task' })
+  await entry.fill('Delayed then done task')
+  await entry.press('Enter')
+
+  await page.getByRole('button', { name: 'Delay Delayed then done task' }).click()
+  await page.getByLabel('Show managed').check()
+  await expect(page.getByRole('button', { name: 'Undo delay for Delayed then done task' })).toHaveAttribute('aria-pressed', 'true')
+
+  await page.getByRole('button', { name: 'Complete Delayed then done task' }).click()
+  await expect(page.getByRole('button', { name: 'Uncheck Delayed then done task' })).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByRole('button', { name: 'Undo delay for Delayed then done task' })).toHaveCount(0)
+
+  await page.getByRole('button', { name: 'Uncheck Delayed then done task' }).click()
+  await expect(page.getByRole('button', { name: 'Complete Delayed then done task' })).toHaveAttribute('aria-pressed', 'false')
+  await expect(page.getByRole('button', { name: 'Delay Delayed then done task' })).toBeVisible()
+})
+
 test('keeps the next checkbox inactive after completing a task on touch devices', async ({ page, isMobile }) => {
   test.skip(!isMobile, 'Touch hover regression')
 
