@@ -74,8 +74,9 @@ main { padding: 28px 24px 56px; }
 .empty-state { min-height: 230px; display: grid; place-content: center; justify-items: center; gap: 7px; color: var(--muted); text-align: center; }
 .empty-state strong { color: var(--ink); }
 .empty-state span { font-size: 13px; }
-.sheet-backdrop { position: fixed; inset: 0; z-index: 20; display: flex; align-items: end; justify-content: center; background: rgba(20, 35, 49, .3); }
-.options-sheet { width: min(100%, 620px); max-height: calc(100svh - 18px); overflow-y: auto; overscroll-behavior: contain; box-sizing: border-box; padding: 10px 24px calc(28px + env(safe-area-inset-bottom)); border-radius: 8px 8px 0 0; background: white; box-shadow: 0 -12px 35px rgba(19, 48, 73, .18); }
+.sheet-backdrop { position: fixed; inset: 0; z-index: 20; display: flex; align-items: end; justify-content: center; background: rgba(20, 35, 49, .3); touch-action: none; }
+html:has(.sheet-backdrop) { overflow: hidden; scrollbar-gutter: stable; }
+.options-sheet { width: min(100%, 620px); max-height: calc(100svh - 18px); overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; box-sizing: border-box; padding: 10px 24px calc(28px + env(safe-area-inset-bottom)); border-radius: 8px 8px 0 0; background: white; box-shadow: 0 -12px 35px rgba(19, 48, 73, .18); }
 .sheet-handle { width: 44px; height: 4px; margin: 0 auto 18px; border-radius: 2px; background: var(--line-strong); }
 .sheet-heading { position: sticky; top: 0; z-index: 1; display: flex; align-items: start; justify-content: space-between; gap: 20px; margin-bottom: 12px; padding-bottom: 10px; background: white; }
 .sheet-heading h3 { margin: 2px 0 0; font: 700 21px/1.25 var(--display); color: var(--ink); }

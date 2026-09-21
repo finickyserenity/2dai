@@ -175,6 +175,38 @@ test('leaves completion times untouched when catching up on a previous day', asy
   expect(task?.weekendPreferredTime).toBeUndefined()
 })
 
+test('keeps the task list in place while the task options panel is open', async ({ page }) => {
+  // Wide enough that the planner rows keep their options button, short enough to scroll.
+  await page.setViewportSize({ width: 900, height: 420 })
+  const entry = page.getByRole('textbox', { name: 'New task' })
+  for (const title of ['Scroll lock one', 'Scroll lock two', 'Scroll lock three', 'Scroll lock four']) {
+    await entry.fill(title)
+    await entry.press('Enter')
+    await expect(page.getByRole('button', { name: `Complete ${title}` })).toBeVisible()
+  }
+
+  await page.evaluate(() => window.scrollTo(0, 120))
+  const before = await page.evaluate(() => window.scrollY)
+  expect(before).toBeGreaterThan(0)
+
+  await page.getByRole('button', { name: 'Options for Scroll lock one' }).click()
+  await expect(page.getByRole('dialog')).toBeVisible()
+  const opened = await page.evaluate(() => window.scrollY)
+
+  // Wheel over both the dimmed backdrop and the panel itself.
+  await page.mouse.move(450, 20)
+  await page.mouse.wheel(0, 300)
+  await page.mouse.move(450, 300)
+  await page.mouse.wheel(0, 300)
+  await page.waitForTimeout(200)
+  expect(await page.evaluate(() => getComputedStyle(document.documentElement).overflowY)).toBe('hidden')
+
+  await page.getByRole('button', { name: 'Done' }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  expect(await page.evaluate(() => getComputedStyle(document.documentElement).overflowY)).not.toBe('hidden')
+  expect(await page.evaluate(() => window.scrollY)).toBe(opened)
+})
+
 test('keeps the next checkbox inactive after completing a task on touch devices', async ({ page, isMobile }) => {
   test.skip(!isMobile, 'Touch hover regression')
 
