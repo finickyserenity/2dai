@@ -42,7 +42,9 @@ test('customizes and persists the header name', async ({ page }) => {
 })
 
 test('renders Start New Day when an open page crosses midnight', async ({ page }) => {
-  await page.clock.install({ time: new Date(2026, 8, 18, 23, 59, 59) })
+  // beforeEach already stored the real today as the active day, so stay on that date.
+  const now = new Date()
+  await page.clock.install({ time: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59) })
   await page.reload()
   await expect(page.getByRole('button', { name: /Start new day/ })).not.toBeVisible()
 
@@ -140,6 +142,37 @@ test('completes a delayed task from its checkbox', async ({ page }) => {
   await page.getByRole('button', { name: 'Uncheck Delayed then done task' }).click()
   await expect(page.getByRole('button', { name: 'Complete Delayed then done task' })).toHaveAttribute('aria-pressed', 'false')
   await expect(page.getByRole('button', { name: 'Delay Delayed then done task' })).toBeVisible()
+})
+
+test('leaves completion times untouched when catching up on a previous day', async ({ page }) => {
+  await page.clock.install({ time: Date.now() + 86_400_000 })
+  await page.reload()
+  await expect(page.getByRole('button', { name: /Start new day/ })).toBeVisible()
+
+  const entry = page.getByRole('textbox', { name: 'New task' })
+  await entry.fill('Forgotten task every 3 days')
+  await entry.press('Enter')
+  await page.getByRole('button', { name: /^Complete Forgotten task/ }).click()
+  await page.getByLabel('Show managed').check()
+  await expect(page.getByRole('button', { name: /^Uncheck Forgotten task/ })).toHaveAttribute('aria-pressed', 'true')
+
+  const task = await page.evaluate(async () => {
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open('2dai-local')
+      request.onerror = () => reject(request.error)
+      request.onsuccess = () => resolve(request.result)
+    })
+    const request = database.transaction('tasks', 'readonly').objectStore('tasks').getAll()
+    const tasks = await new Promise<Array<Record<string, unknown>>>((resolve, reject) => {
+      request.onerror = () => reject(request.error)
+      request.onsuccess = () => resolve(request.result)
+    })
+    return tasks.find((item) => String(item.title).startsWith('Forgotten task'))
+  })
+  expect(task).toBeDefined()
+  expect(task?.lastCompletedAt).toBeUndefined()
+  expect(task?.weekdayPreferredTime).toBeUndefined()
+  expect(task?.weekendPreferredTime).toBeUndefined()
 })
 
 test('keeps the next checkbox inactive after completing a task on touch devices', async ({ page, isMobile }) => {

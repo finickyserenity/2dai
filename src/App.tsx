@@ -201,6 +201,8 @@ function App({ onRefreshApp }: AppProps) {
   async function manageTask(task: Task, action: TaskAction) {
     const now = new Date()
     const effectiveDate = snapshot.activeDay
+    // Checking off a previous day's task: the current time says nothing about when it was really done.
+    const isCatchUp = effectiveDate < dateKey(now)
     await db.transaction('rw', db.tasks, db.events, async () => {
       let storedTask = await db.tasks.get(task.id)
       if (!storedTask) return
@@ -266,9 +268,9 @@ function App({ onRefreshApp }: AppProps) {
 
       await db.tasks.update(task.id, {
         nextDueAt: nextDueDate(storedTask, new Date(`${effectiveDate}T12:00:00`)),
-        lastCompletedAt: action === 'completed' ? now.toISOString() : storedTask.lastCompletedAt,
+        lastCompletedAt: action === 'completed' && !isCatchUp ? now.toISOString() : storedTask.lastCompletedAt,
         archived: action === 'completed' && !storedTask.intervalDays,
-        ...action === 'completed'
+        ...action === 'completed' && !isCatchUp
           ? observedTimeChanges(storedTask, effectiveDate, timeKey(now))
           : {},
         updatedAt: now.toISOString(),
