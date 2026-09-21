@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises'
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/')
@@ -189,8 +189,11 @@ test('keeps the task list in place while the task options panel is open', async 
   const before = await page.evaluate(() => window.scrollY)
   expect(before).toBeGreaterThan(0)
 
+  const rowEdges = () => page.locator('.task-row').first().evaluate((row) => { const box = row.getBoundingClientRect(); return [box.left, box.right] })
+  const edgesBefore = await rowEdges()
   await page.getByRole('button', { name: 'Options for Scroll lock one' }).click()
   await expect(page.getByRole('dialog')).toBeVisible()
+  expect(await rowEdges()).toEqual(edgesBefore)
   const opened = await page.evaluate(() => window.scrollY)
 
   // Wheel over both the dimmed backdrop and the panel itself.
@@ -205,6 +208,143 @@ test('keeps the task list in place while the task options panel is open', async 
   await expect(page.getByRole('dialog')).toHaveCount(0)
   expect(await page.evaluate(() => getComputedStyle(document.documentElement).overflowY)).not.toBe('hidden')
   expect(await page.evaluate(() => window.scrollY)).toBe(opened)
+})
+
+async function storedTask(page: Page, title: string) {
+  return page.evaluate(async (taskTitle) => {
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open('2dai-local')
+      request.onerror = () => reject(request.error)
+      request.onsuccess = () => resolve(request.result)
+    })
+    const request = database.transaction('tasks', 'readonly').objectStore('tasks').getAll()
+    const tasks = await new Promise<Array<Record<string, unknown>>>((resolve, reject) => {
+      request.onerror = () => reject(request.error)
+      request.onsuccess = () => resolve(request.result)
+    })
+    return tasks.find((item) => item.title === taskTitle)
+  }, title)
+}
+
+function localDateKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+test('offers longer delays and skipping from a long press on the delay button', async ({ page }) => {
+  const entry = page.getByRole('textbox', { name: 'New task' })
+  for (const title of ['Long press week', 'Long press skip', 'Quick delay']) {
+    await entry.fill(`${title} 2d`)
+    await entry.press('Enter')
+    await expect(page.getByRole('button', { name: `Delay ${title}` })).toBeVisible()
+  }
+  await page.getByLabel('Show managed').check()
+
+  const today = new Date()
+  const noon = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 12)
+  const nextMonday = new Date(noon)
+  nextMonday.setDate(noon.getDate() + (((8 - noon.getDay()) % 7) || 7))
+
+  const weekButton = page.getByRole('button', { name: 'Delay Long press week' })
+  await weekButton.hover()
+  await page.mouse.down()
+  await expect(page.getByRole('dialog')).toBeVisible()
+  await page.mouse.up()
+  await expect(page.getByRole('dialog').getByRole('button')).toHaveText([/Cancel/, /Delay one day/, /Until the weekend/, /Until next week/, /Until next month/, /Skip this occurrence/])
+  await expect(page.getByRole('button', { name: 'Undo delay for Long press week' })).toHaveCount(0)
+  await page.getByRole('button', { name: /Until next week/ }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Undo delay for Long press week' })).toBeVisible()
+  expect((await storedTask(page, 'Long press week'))?.nextDueAt).toBe(localDateKey(nextMonday))
+
+  await page.getByRole('button', { name: 'Delay Long press skip' }).click({ button: 'right' })
+  await page.getByRole('button', { name: /Skip this occurrence/ }).click()
+  await expect(page.getByRole('button', { name: 'Undo skip for Long press skip' })).toBeVisible()
+  await page.getByRole('button', { name: 'Undo skip for Long press skip' }).click()
+  await expect(page.getByRole('button', { name: 'Delay Long press skip' })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Delay Quick delay' }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Undo delay for Quick delay' })).toBeVisible()
+  const tomorrow = new Date(noon)
+  tomorrow.setDate(noon.getDate() + 1)
+  expect((await storedTask(page, 'Quick delay'))?.nextDueAt).toBe(localDateKey(tomorrow))
+})
+
+test('tracks effort from the play button until the task is checked off', async ({ page }) => {
+  await page.clock.install({ time: new Date() })
+  await page.reload()
+  const entry = page.getByRole('textbox', { name: 'New task' })
+  await entry.fill('Tracked task 2d')
+  await entry.press('Enter')
+
+  await page.getByRole('button', { name: 'Track effort for Tracked task' }).click()
+  await expect(page.getByRole('button', { name: 'Effort 1 for Tracked task, tracking' })).toBeVisible()
+  await page.clock.fastForward('11:00')
+  await expect(page.getByRole('button', { name: 'Effort 3 for Tracked task, tracking' })).toBeVisible()
+
+  // This page is too short to scroll, so opening a sheet must not make room for a scrollbar.
+  const rowEdges = () => page.locator('.task-row').first().evaluate((row) => { const box = row.getBoundingClientRect(); return [box.left, box.right] })
+  const edgesBefore = await rowEdges()
+  await page.getByRole('button', { name: 'Effort 3 for Tracked task, tracking' }).click()
+  const panel = page.getByRole('dialog')
+  await expect(panel).toBeVisible()
+  expect(await rowEdges()).toEqual(edgesBefore)
+  await expect(panel.getByRole('heading', { name: 'Tracked task' })).toBeVisible()
+  await expect(panel.getByLabel('Time spent')).toHaveText('11:00')
+  await expect(panel.getByLabel('Effort so far')).toHaveText('3')
+  await panel.getByRole('button', { name: 'Pause' }).click()
+  await expect(panel.getByText('Paused')).toBeVisible()
+  await page.clock.fastForward('30:00')
+  await expect(panel.getByLabel('Time spent')).toHaveText('11:00')
+  await panel.getByRole('button', { name: 'Resume' }).click()
+  await panel.getByRole('button', { name: 'Continue' }).click()
+  await expect(panel).toHaveCount(0)
+  await page.clock.fastForward('05:00')
+  await expect(page.getByRole('button', { name: 'Effort 4 for Tracked task, tracking' })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Complete Tracked task' }).click()
+  await page.getByLabel('Show managed').check()
+  await expect(page.getByRole('button', { name: 'Uncheck Tracked task' })).toBeVisible()
+  let task = await storedTask(page, 'Tracked task')
+  expect(task?.effort).toBe(4)
+  expect(task?.trackingStartedAt).toBeUndefined()
+  expect(task?.trackedMs).toBeUndefined()
+
+  await page.getByRole('button', { name: 'Uncheck Tracked task' }).click()
+  await expect(page.getByRole('button', { name: 'Effort 4 for Tracked task, paused' })).toBeVisible()
+  task = await storedTask(page, 'Tracked task')
+  expect(task?.effort).toBe(1)
+
+  await page.getByRole('button', { name: 'Effort 4 for Tracked task, paused' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Reset' }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Track effort for Tracked task' })).toBeVisible()
+})
+
+test('leaves no pressed look on the next row after delaying a task on touch devices', async ({ page, isMobile }) => {
+  test.skip(!isMobile, 'Touch hover regression')
+
+  const entry = page.getByRole('textbox', { name: 'New task' })
+  for (const title of ['First touch delay', 'Second touch delay']) {
+    await entry.fill(title)
+    await entry.press('Enter')
+    await expect(page.getByRole('button', { name: `Delay ${title}` })).toBeVisible()
+  }
+
+  await page.getByRole('button', { name: 'Delay First touch delay' }).tap()
+  await expect(page.getByRole('button', { name: 'Delay First touch delay' })).toHaveCount(0)
+
+  // Touch emulation cannot reproduce the sticky hover, so also require that every row-action
+  // hover style sits behind a media query that touch devices do not match.
+  const ungatedHoverRules = await page.evaluate(() => [...document.styleSheets]
+    .flatMap((sheet) => [...sheet.cssRules])
+    .filter((rule): rule is CSSStyleRule => rule instanceof CSSStyleRule)
+    .map((rule) => rule.selectorText)
+    .filter((selector) => selector.includes(':hover') && /\.task-actions|\.complete-button|\.effort-badge/.test(selector)))
+  expect(ungatedHoverRules).toEqual([])
+  expect(await page.evaluate(() => matchMedia('(hover: hover) and (pointer: fine)').matches)).toBe(false)
+  await expect(page.getByRole('button', { name: 'Delay Second touch delay' })).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
+  await expect(page.getByRole('button', { name: 'Track effort for Second touch delay' })).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
 })
 
 test('keeps the next checkbox inactive after completing a task on touch devices', async ({ page, isMobile }) => {

@@ -10,6 +10,10 @@ import {
   parseTaskInput,
   preferredTimeFor,
   type Task,
+  delayTargetDate,
+  effortFromTracked,
+  isTracking,
+  trackedMilliseconds,
 } from './domain'
 
 function task(overrides: Partial<Task> = {}): Task {
@@ -155,5 +159,53 @@ describe('due date filters', () => {
   it('finds the first allowed date on or after a proposed due date', () => {
     expect(nextAllowedDueDate('2026-09-17', 'monday, q4')).toBe('2026-10-05')
     expect(nextAllowedDueDate('2026-09-17', '14th spring')).toBe('2027-03-14')
+  })
+})
+describe('delayTargetDate', () => {
+  const target = (option: Parameters<typeof delayTargetDate>[0], day: string) => dateKey(delayTargetDate(option, day))
+
+  it('delays by one day', () => {
+    expect(target('day', '2026-09-30')).toBe('2026-10-01')
+  })
+
+  it('finds the upcoming weekend day', () => {
+    expect(target('weekend', '2026-09-21')).toBe('2026-09-26')
+    expect(target('weekend', '2026-09-25')).toBe('2026-09-26')
+    expect(target('weekend', '2026-09-26')).toBe('2026-09-27')
+    expect(target('weekend', '2026-09-27')).toBe('2026-10-03')
+  })
+
+  it('finds the following Monday', () => {
+    expect(target('week', '2026-09-21')).toBe('2026-09-28')
+    expect(target('week', '2026-09-26')).toBe('2026-09-28')
+    expect(target('week', '2026-09-27')).toBe('2026-09-28')
+  })
+
+  it('finds the first day of the next month', () => {
+    expect(target('month', '2026-09-21')).toBe('2026-10-01')
+    expect(target('month', '2026-12-31')).toBe('2027-01-01')
+  })
+})
+
+describe('effort tracking', () => {
+  it('counts one effort per started five minutes', () => {
+    expect(effortFromTracked(0)).toBe(1)
+    expect(effortFromTracked(5 * 60_000)).toBe(1)
+    expect(effortFromTracked(5 * 60_000 + 1)).toBe(2)
+    expect(effortFromTracked(61 * 60_000)).toBe(13)
+  })
+
+  it('adds the running stretch to paused time', () => {
+    const now = new Date('2026-09-21T10:10:00Z')
+    expect(trackedMilliseconds({}, now)).toBe(0)
+    expect(trackedMilliseconds({ trackedMs: 90_000 }, now)).toBe(90_000)
+    expect(trackedMilliseconds({ trackedMs: 90_000, trackingStartedAt: '2026-09-21T10:00:00Z' }, now)).toBe(690_000)
+    expect(trackedMilliseconds({ trackingStartedAt: '2026-09-21T10:20:00Z' }, now)).toBe(0)
+  })
+
+  it('treats a paused timer at zero as tracking', () => {
+    expect(isTracking({})).toBe(false)
+    expect(isTracking({ trackedMs: 0 })).toBe(true)
+    expect(isTracking({ trackingStartedAt: '2026-09-21T10:00:00Z' })).toBe(true)
   })
 })

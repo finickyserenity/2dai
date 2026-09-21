@@ -1,4 +1,7 @@
 export type TaskAction = 'completed' | 'delayed' | 'skipped'
+export type DelayTarget = 'day' | 'weekend' | 'week' | 'month'
+
+export const EFFORT_UNIT_MS = 5 * 60_000
 
 export interface TaskList {
   id: string
@@ -42,6 +45,8 @@ export interface Task {
   weekendPreferredTime?: string
   weekendPreferredTimeSource?: 'explicit' | 'observed'
   lastCompletedAt?: string
+  trackingStartedAt?: string
+  trackedMs?: number
   nextDueAt: string
   scheduledForPlanner?: boolean
   archived: boolean
@@ -66,6 +71,8 @@ export interface TaskEvent {
   previousWeekendPreferredTime?: string
   previousWeekendPreferredTimeSource?: 'explicit' | 'observed'
   hasDayTypeTimeSnapshot?: boolean
+  previousEffort?: number
+  previousTrackedMs?: number
 }
 
 export interface AppSetting {
@@ -128,6 +135,27 @@ export function addDays(date: Date, days: number): Date {
   const result = new Date(date)
   result.setDate(result.getDate() + days)
   return result
+}
+
+export function isTracking(task: Pick<Task, 'trackingStartedAt' | 'trackedMs'>): boolean {
+  return task.trackingStartedAt !== undefined || task.trackedMs !== undefined
+}
+
+export function trackedMilliseconds(task: Pick<Task, 'trackingStartedAt' | 'trackedMs'>, now: Date | number = Date.now()): number {
+  const running = task.trackingStartedAt ? Math.max(0, Number(now) - new Date(task.trackingStartedAt).getTime()) : 0
+  return (task.trackedMs ?? 0) + running
+}
+
+export function effortFromTracked(milliseconds: number): number {
+  return Math.max(1, Math.ceil(milliseconds / EFFORT_UNIT_MS))
+}
+
+export function delayTargetDate(target: DelayTarget, activeDay: Date | string): Date {
+  const day = typeof activeDay === 'string' ? new Date(`${activeDay}T12:00:00`) : activeDay
+  if (target === 'weekend') return addDays(day, day.getDay() === 6 ? 1 : 6 - day.getDay())
+  if (target === 'week') return addDays(day, ((8 - day.getDay()) % 7) || 7)
+  if (target === 'month') return new Date(day.getFullYear(), day.getMonth() + 1, 1, 12)
+  return addDays(day, 1)
 }
 
 export function isWeekend(value: Date | string): boolean {

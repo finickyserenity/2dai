@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
   CalendarDays,
@@ -11,6 +11,8 @@ import {
   ListTodo,
   Menu,
   MoreHorizontal,
+  Pause,
+  Play,
   Plus,
   RotateCcw,
   Settings,
@@ -25,12 +27,18 @@ import { ListWorkspace } from './ListWorkspace'
 import {
   addDays,
   dateKey,
+  delayTargetDate,
+  effortFromTracked,
+  EFFORT_UNIT_MS,
   formatFriendlyDate,
+  isTracking,
   isWeekend,
   nextAllowedDueDate,
   nextDueDate,
   parseTaskInput,
   preferredTimeFor,
+  trackedMilliseconds,
+  type DelayTarget,
   type Task,
   type TaskAction,
   type TaskEvent,
@@ -63,6 +71,8 @@ function App({ onRefreshApp }: AppProps) {
   const [entry, setEntry] = useState('')
   const [entryListId, setEntryListId] = useState('personal')
   const [selectedTaskId, setSelectedTaskId] = useState<string>()
+  const [delayMenuTaskId, setDelayMenuTaskId] = useState<string>()
+  const [trackingTaskId, setTrackingTaskId] = useState<string>()
   const [taskTitleDraft, setTaskTitleDraft] = useState('')
   const [dueFiltersDraft, setDueFiltersDraft] = useState('')
   const [lastCompletedDraft, setLastCompletedDraft] = useState('')
@@ -170,6 +180,23 @@ function App({ onRefreshApp }: AppProps) {
   const effort = visibleTasks.reduce((sum, task) => sum + task.effort, 0)
     + dueProjects.flatMap((group) => group.tasks).reduce((sum, task) => sum + task.effort, 0)
   const selectedTask = snapshot.tasks.find((task) => task.id === selectedTaskId)
+  const delayMenuTask = snapshot.tasks.find((task) => task.id === delayMenuTaskId)
+  const trackingTask = snapshot.tasks.find((task) => task.id === trackingTaskId && isTracking(task))
+
+  const isSheetOpen = Boolean(selectedTask || delayMenuTask || trackingTask)
+  useLayoutEffect(() => {
+    if (!isSheetOpen) return
+    // Keep the list behind a sheet from scrolling. Where the scrollbar takes up room, pad by its
+    // width so hiding it does not shift the page sideways.
+    const root = document.documentElement
+    const scrollbarWidth = window.innerWidth - root.clientWidth
+    root.style.overflow = 'hidden'
+    if (scrollbarWidth > 0) root.style.paddingRight = `${scrollbarWidth}px`
+    return () => {
+      root.style.overflow = ''
+      root.style.paddingRight = ''
+    }
+  }, [isSheetOpen])
 
   async function addTask(event: FormEvent) {
     event.preventDefault()
@@ -198,7 +225,7 @@ function App({ onRefreshApp }: AppProps) {
     setEntry('')
   }
 
-  async function manageTask(task: Task, action: TaskAction) {
+  async function manageTask(task: Task, action: TaskAction, delayTarget: DelayTarget = 'day') {
     const now = new Date()
     const effectiveDate = snapshot.activeDay
     // Checking off a previous day's task: the current time says nothing about when it was really done.
@@ -218,6 +245,10 @@ function App({ onRefreshApp }: AppProps) {
           nextDueAt: existingEvent.previousNextDueAt ?? existingEvent.effectiveDate,
           lastCompletedAt: existingEvent.previousLastCompletedAt ?? previousCompletion?.createdAt,
           archived: existingEvent.previousArchived ?? false,
+          // A completion that consumed a timer hands it back paused, so it never counts the time spent checked off.
+          ...existingEvent.previousTrackedMs !== undefined
+            ? { effort: existingEvent.previousEffort ?? storedTask.effort, trackedMs: existingEvent.previousTrackedMs, trackingStartedAt: undefined }
+            : {},
           ...existingEvent.hasPreferredTimeSnapshot
             ? {
                 preferredTime: existingEvent.previousPreferredTime,
@@ -239,6 +270,10 @@ function App({ onRefreshApp }: AppProps) {
         if (!storedTask) return
       }
 
+      const tracked = isTracking(storedTask) ? trackedMilliseconds(storedTask, now) : undefined
+      // Putting a task off stops its clock, but keeps the time already spent.
+      const pausedTracking = tracked === undefined ? {} : { trackedMs: tracked, trackingStartedAt: undefined }
+
       await db.events.add({
         id: createId(),
         taskId: task.id,
@@ -256,11 +291,15 @@ function App({ onRefreshApp }: AppProps) {
         previousWeekendPreferredTime: storedTask.weekendPreferredTime,
         previousWeekendPreferredTimeSource: storedTask.weekendPreferredTimeSource,
         hasDayTypeTimeSnapshot: true,
+        ...action === 'completed' && tracked !== undefined
+          ? { previousEffort: storedTask.effort, previousTrackedMs: tracked }
+          : {},
       })
 
       if (action === 'delayed') {
         await db.tasks.update(task.id, {
-          nextDueAt: nextAllowedDueDate(addDays(new Date(`${effectiveDate}T12:00:00`), 1), storedTask.dueFilters),
+          nextDueAt: nextAllowedDueDate(delayTargetDate(delayTarget, effectiveDate), storedTask.dueFilters),
+          ...pausedTracking,
           updatedAt: now.toISOString(),
         })
         return
@@ -273,9 +312,29 @@ function App({ onRefreshApp }: AppProps) {
         ...action === 'completed' && !isCatchUp
           ? observedTimeChanges(storedTask, effectiveDate, timeKey(now))
           : {},
+        ...action !== 'completed'
+          ? pausedTracking
+          : tracked !== undefined
+            ? { effort: effortFromTracked(tracked), trackedMs: undefined, trackingStartedAt: undefined }
+            : {},
         updatedAt: now.toISOString(),
       })
     })
+  }
+
+  async function updateTracking(task: Task, change: 'start' | 'pause' | 'reset') {
+    const now = new Date()
+    await db.transaction('rw', db.tasks, async () => {
+      const storedTask = await db.tasks.get(task.id)
+      if (!storedTask) return
+      const elapsed = trackedMilliseconds(storedTask, now)
+      await db.tasks.update(task.id, {
+        trackedMs: change === 'reset' ? undefined : elapsed,
+        trackingStartedAt: change === 'start' ? now.toISOString() : undefined,
+        updatedAt: now.toISOString(),
+      })
+    })
+    if (change === 'reset') setTrackingTaskId(undefined)
   }
 
   async function startNewDay() {
@@ -578,8 +637,12 @@ function App({ onRefreshApp }: AppProps) {
                       </span>
                     </button>
                     <div className="task-actions">
-                      {(!isManaged || managedAction === 'delayed') && <button type="button" onClick={() => manageTask(task, 'delayed')} title={managedAction === 'delayed' ? 'Undo delay' : 'Delay one day'} aria-pressed={managedAction === 'delayed'} aria-label={`${managedAction === 'delayed' ? 'Undo delay for' : 'Delay'} ${task.title}`}><Clock3 size={18} /></button>}
-                      {(!isManaged || managedAction === 'skipped') && <button type="button" onClick={() => manageTask(task, 'skipped')} title={managedAction === 'skipped' ? 'Undo skip' : 'Skip this occurrence'} aria-pressed={managedAction === 'skipped'} aria-label={`${managedAction === 'skipped' ? 'Undo skip for' : 'Skip'} ${task.title}`}><SkipForward size={18} /></button>}
+                      {!isManaged && <DelayButton title={task.title} onDelay={() => manageTask(task, 'delayed')} onOpenMenu={() => setDelayMenuTaskId(task.id)} />}
+                      {managedAction === 'delayed' && <button type="button" onClick={() => manageTask(task, 'delayed')} title="Undo delay" aria-pressed="true" aria-label={`Undo delay for ${task.title}`}><Clock3 size={18} /></button>}
+                      {managedAction === 'skipped' && <button type="button" onClick={() => manageTask(task, 'skipped')} title="Undo skip" aria-pressed="true" aria-label={`Undo skip for ${task.title}`}><SkipForward size={18} /></button>}
+                      {!isManaged && (isTracking(task)
+                        ? <EffortBadge task={task} onOpen={() => setTrackingTaskId(task.id)} />
+                        : <button type="button" onClick={() => updateTracking(task, 'start')} title="Track effort" aria-label={`Track effort for ${task.title}`}><Play size={18} /></button>)}
                       <button type="button" onClick={() => openTaskOptions(task.id)} title="Task options" aria-label={`Options for ${task.title}`}><MoreHorizontal size={19} /></button>
                     </div>
                   </article>
@@ -592,6 +655,32 @@ function App({ onRefreshApp }: AppProps) {
           </div>
         </section>}
       </main>
+
+      {delayMenuTask && (
+        <SheetBackdrop onClose={() => setDelayMenuTaskId(undefined)}>
+          <section className="options-sheet" role="dialog" aria-modal="true" aria-labelledby="delay-menu-title">
+            <div className="sheet-handle" />
+            <div className="sheet-heading">
+              <div><p className="eyebrow">Put off</p><h3 id="delay-menu-title">{delayMenuTask.title}</h3></div>
+              <button className="text-button" type="button" onClick={() => setDelayMenuTaskId(undefined)}>Cancel</button>
+            </div>
+            <div className="sheet-menu">
+              {DELAY_TARGETS.map(({ target, label }) => (
+                <button key={target} type="button" onClick={() => { setDelayMenuTaskId(undefined); void manageTask(delayMenuTask, 'delayed', target) }}>
+                  <Clock3 size={18} /><span>{label}</span>
+                  <small>{formatFriendlyDate(new Date(`${nextAllowedDueDate(delayTargetDate(target, snapshot.activeDay), delayMenuTask.dueFilters)}T12:00:00`))}</small>
+                </button>
+              ))}
+              <button type="button" onClick={() => { setDelayMenuTaskId(undefined); void manageTask(delayMenuTask, 'skipped') }}>
+                <SkipForward size={18} /><span>Skip this occurrence</span>
+                <small>{formatFriendlyDate(new Date(`${nextDueDate(delayMenuTask, activeDate)}T12:00:00`))}</small>
+              </button>
+            </div>
+          </section>
+        </SheetBackdrop>
+      )}
+
+      {trackingTask && <TrackingSheet task={trackingTask} list={listById.get(trackingTask.listId)?.name} onChange={(change) => updateTracking(trackingTask, change)} onClose={() => setTrackingTaskId(undefined)} />}
 
       {selectedTask && (
         <div className="sheet-backdrop" role="presentation" onMouseDown={closeTaskOptions}>
@@ -620,6 +709,128 @@ function App({ onRefreshApp }: AppProps) {
       )}
     </div>
   )
+}
+
+const DELAY_TARGETS: Array<{ target: DelayTarget; label: string }> = [
+  { target: 'day', label: 'Delay one day' },
+  { target: 'weekend', label: 'Until the weekend' },
+  { target: 'week', label: 'Until next week' },
+  { target: 'month', label: 'Until next month' },
+]
+
+const LONG_PRESS_MS = 500
+
+function DelayButton({ title, onDelay, onOpenMenu }: { title: string; onDelay: () => void; onOpenMenu: () => void }) {
+  const timer = useRef<number | undefined>(undefined)
+  const menuOpened = useRef(false)
+
+  function cancel() {
+    window.clearTimeout(timer.current)
+  }
+
+  function openMenu() {
+    cancel()
+    if (menuOpened.current) return
+    menuOpened.current = true
+    onOpenMenu()
+  }
+
+  useEffect(() => cancel, [])
+
+  return (
+    <button
+      className="delay-button"
+      type="button"
+      title="Delay one day (hold for more)"
+      aria-label={`Delay ${title}`}
+      aria-haspopup="dialog"
+      onPointerDown={(event) => {
+        if (event.button !== 0) return
+        menuOpened.current = false
+        timer.current = window.setTimeout(openMenu, LONG_PRESS_MS)
+      }}
+      onPointerUp={cancel}
+      onPointerLeave={cancel}
+      onPointerCancel={cancel}
+      onContextMenu={(event) => { event.preventDefault(); openMenu() }}
+      onClick={() => {
+        // The release that ends a long press must not also delay the task.
+        if (menuOpened.current) { menuOpened.current = false; return }
+        onDelay()
+      }}
+    ><Clock3 size={18} /></button>
+  )
+}
+
+function SheetBackdrop({ onClose, children }: { onClose: () => void; children: ReactNode }) {
+  const pressedBackdrop = useRef(false)
+  // Only a press that both starts and ends on the dimmed area closes the sheet, so the
+  // finger lifting from the long press that opened it cannot dismiss it again.
+  return (
+    <div
+      className="sheet-backdrop"
+      role="presentation"
+      onPointerDown={(event) => { pressedBackdrop.current = event.target === event.currentTarget }}
+      onClick={(event) => { if (event.target === event.currentTarget && pressedBackdrop.current) onClose() }}
+    >{children}</div>
+  )
+}
+
+function useNow(active: boolean, intervalMs: number): number {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (!active) return
+    const interval = window.setInterval(() => setNow(Date.now()), intervalMs)
+    return () => window.clearInterval(interval)
+  }, [active, intervalMs])
+  return now
+}
+
+function EffortBadge({ task, onOpen }: { task: Task; onOpen: () => void }) {
+  const running = Boolean(task.trackingStartedAt)
+  const effort = effortFromTracked(trackedMilliseconds(task, useNow(running, 1_000)))
+  return (
+    <button className={`effort-badge${running ? ' running' : ''}`} type="button" onClick={onOpen} title={running ? 'Tracking effort' : 'Effort tracking paused'} aria-label={`Effort ${effort} for ${task.title}, ${running ? 'tracking' : 'paused'}`}>
+      <span>{effort}</span>
+    </button>
+  )
+}
+
+function TrackingSheet({ task, list, onChange, onClose }: { task: Task; list?: string; onChange: (change: 'start' | 'pause' | 'reset') => void; onClose: () => void }) {
+  const running = Boolean(task.trackingStartedAt)
+  const elapsed = trackedMilliseconds(task, useNow(running, 1_000))
+  const effort = effortFromTracked(elapsed)
+  return (
+    <SheetBackdrop onClose={onClose}>
+      <section className="options-sheet" role="dialog" aria-modal="true" aria-labelledby="tracking-title">
+        <div className="sheet-handle" />
+        <div className="sheet-heading">
+          <div><p className="eyebrow">Tracking effort{list ? ` · ${list}` : ''}</p><h3 id="tracking-title">{task.title}</h3></div>
+          <button className="text-button" type="button" onClick={onClose}>Continue</button>
+        </div>
+        <dl className="tracking-stats">
+          <div><dt>{running ? 'Running since' : 'Status'}</dt><dd>{running ? formatTime(timeKey(new Date(task.trackingStartedAt!))) : 'Paused'}</dd></div>
+          <div><dt>Time spent</dt><dd aria-label="Time spent">{formatElapsed(elapsed)}</dd></div>
+          <div><dt>Effort so far</dt><dd aria-label="Effort so far">{effort}</dd></div>
+          <div><dt>Saved effort</dt><dd>{task.effort}</dd></div>
+        </dl>
+        <p className="tracking-note">Effort counts 1 for every {EFFORT_UNIT_MS / 60_000} minutes started. Checking off the task saves {effort} as its effort and stops the timer.</p>
+        <div className="tracking-actions">
+          {running
+            ? <button type="button" onClick={() => onChange('pause')}><Pause size={17} /> Pause</button>
+            : <button type="button" onClick={() => onChange('start')}><Play size={17} /> Resume</button>}
+          <button type="button" onClick={() => onChange('reset')}><RotateCcw size={17} /> Reset</button>
+        </div>
+      </section>
+    </SheetBackdrop>
+  )
+}
+
+function formatElapsed(milliseconds: number): string {
+  const seconds = Math.floor(milliseconds / 1_000)
+  const hours = Math.floor(seconds / 3_600)
+  const rest = `${String(Math.floor(seconds / 60) % 60).padStart(hours ? 2 : 1, '0')}:${String(seconds % 60).padStart(2, '0')}`
+  return hours ? `${hours}:${rest}` : rest
 }
 
 function tasksForView(tasks: Task[], view: PlannerView, activeDate: Date, managedIds: Set<string>, showCompleted: boolean): Task[] {
