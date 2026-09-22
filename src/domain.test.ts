@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest'
 import {
   addDays,
   dateKey,
+  DEFAULT_DARK_END,
+  DEFAULT_DARK_START,
+  isDarkHours,
+  nextThemeChange,
   dueDateMatchesFilters,
   formatFriendlyDate,
   isWeekend,
@@ -207,5 +211,28 @@ describe('effort tracking', () => {
     expect(isTracking({})).toBe(false)
     expect(isTracking({ trackedMs: 0 })).toBe(true)
     expect(isTracking({ trackingStartedAt: '2026-09-21T10:00:00Z' })).toBe(true)
+  })
+})
+
+describe('theme schedule', () => {
+  it('treats the default window as night from 10:30pm until 8:30am', () => {
+    expect(isDarkHours(new Date(2026, 8, 22, 22, 29), DEFAULT_DARK_START, DEFAULT_DARK_END)).toBe(false)
+    expect(isDarkHours(new Date(2026, 8, 22, 22, 30), DEFAULT_DARK_START, DEFAULT_DARK_END)).toBe(true)
+    expect(isDarkHours(new Date(2026, 8, 23, 3, 0), DEFAULT_DARK_START, DEFAULT_DARK_END)).toBe(true)
+    expect(isDarkHours(new Date(2026, 8, 23, 8, 29), DEFAULT_DARK_START, DEFAULT_DARK_END)).toBe(true)
+    expect(isDarkHours(new Date(2026, 8, 23, 8, 30), DEFAULT_DARK_START, DEFAULT_DARK_END)).toBe(false)
+    expect(isDarkHours(new Date(2026, 8, 23, 14, 0), DEFAULT_DARK_START, DEFAULT_DARK_END)).toBe(false)
+  })
+
+  it('supports a window that does not cross midnight and an empty window', () => {
+    expect(isDarkHours(new Date(2026, 8, 22, 13, 0), '12:00', '14:00')).toBe(true)
+    expect(isDarkHours(new Date(2026, 8, 22, 15, 0), '12:00', '14:00')).toBe(false)
+    expect(isDarkHours(new Date(2026, 8, 22, 12, 0), '12:00', '12:00')).toBe(false)
+  })
+
+  it('finds the next boundary in either direction', () => {
+    expect(nextThemeChange(new Date(2026, 8, 22, 14, 0), DEFAULT_DARK_START, DEFAULT_DARK_END)).toEqual(new Date(2026, 8, 22, 22, 30))
+    expect(nextThemeChange(new Date(2026, 8, 22, 23, 0), DEFAULT_DARK_START, DEFAULT_DARK_END)).toEqual(new Date(2026, 8, 23, 8, 30))
+    expect(nextThemeChange(new Date(2026, 8, 22, 22, 30), DEFAULT_DARK_START, DEFAULT_DARK_END)).toEqual(new Date(2026, 8, 23, 8, 30))
   })
 })

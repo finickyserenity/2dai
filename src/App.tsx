@@ -27,14 +27,18 @@ import { ListWorkspace } from './ListWorkspace'
 import {
   addDays,
   dateKey,
+  DEFAULT_DARK_END,
+  DEFAULT_DARK_START,
   delayTargetDate,
   effortFromTracked,
   EFFORT_UNIT_MS,
   formatFriendlyDate,
+  isDarkHours,
   isTracking,
   isWeekend,
   nextAllowedDueDate,
   nextDueDate,
+  nextThemeChange,
   parseTaskInput,
   preferredTimeFor,
   trackedMilliseconds,
@@ -42,6 +46,7 @@ import {
   type Task,
   type TaskAction,
   type TaskEvent,
+  type ThemeMode,
 } from './domain'
 import './App.css'
 
@@ -146,17 +151,50 @@ function App({ onRefreshApp }: AppProps) {
   }, [])
 
   const snapshot = useLiveQuery(async () => {
-    const [tasks, lists, sections, projects, activeDaySetting, userNameSetting, events] = await Promise.all([
+    const [tasks, lists, sections, projects, activeDaySetting, userNameSetting, themeSetting, darkStartSetting, darkEndSetting, events] = await Promise.all([
       db.tasks.toArray(),
       db.lists.orderBy('position').toArray(),
       db.sections.toArray(),
       db.projects.toArray(),
       db.settings.get('activeDay'),
       db.settings.get('userName'),
+      db.settings.get('themeMode'),
+      db.settings.get('darkModeStart'),
+      db.settings.get('darkModeEnd'),
       db.events.toArray(),
     ])
-    return { tasks, lists, sections, projects, events, activeDay: activeDaySetting?.value ?? dateKey(new Date()), userName: userNameSetting?.value ?? 'User' }
-  }, [], { tasks: [], lists: [], sections: [], projects: [], events: [], activeDay: dateKey(new Date()), userName: 'User' })
+    return {
+      tasks, lists, sections, projects, events,
+      activeDay: activeDaySetting?.value ?? dateKey(new Date()),
+      userName: userNameSetting?.value ?? 'User',
+      themeMode: (themeSetting?.value ?? 'auto') as ThemeMode,
+      darkModeStart: darkStartSetting?.value || DEFAULT_DARK_START,
+      darkModeEnd: darkEndSetting?.value || DEFAULT_DARK_END,
+    }
+  }, [], { tasks: [], lists: [], sections: [], projects: [], events: [], activeDay: dateKey(new Date()), userName: 'User', themeMode: 'auto' as ThemeMode, darkModeStart: DEFAULT_DARK_START, darkModeEnd: DEFAULT_DARK_END })
+
+  // Re-evaluate the scheduled theme when its next boundary passes and whenever the app comes back
+  // into view, since a phone that slept through 10:30pm has no timer left to fire.
+  const [themeTick, setThemeTick] = useState(0)
+  const { themeMode, darkModeStart, darkModeEnd } = snapshot
+  useEffect(() => {
+    if (themeMode !== 'auto') return
+    const bump = () => setThemeTick((tick) => tick + 1)
+    const timer = setTimeout(bump, Math.max(1_000, nextThemeChange(new Date(), darkModeStart, darkModeEnd).getTime() - Date.now() + 500))
+    const handleVisibilityChange = () => { if (!document.hidden) bump() }
+    window.addEventListener('focus', bump)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => {
+      clearTimeout(timer)
+      window.removeEventListener('focus', bump)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [themeMode, darkModeStart, darkModeEnd, themeTick])
+  const isDark = themeMode === 'dark' || (themeMode === 'auto' && isDarkHours(new Date(), darkModeStart, darkModeEnd))
+  useLayoutEffect(() => {
+    document.documentElement.dataset.theme = isDark ? 'dark' : 'light'
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', isDark ? '#141d25' : '#1e5784')
+  }, [isDark])
 
   const today = currentDay
   const activeDate = new Date(`${snapshot.activeDay}T12:00:00`)
@@ -537,6 +575,20 @@ function App({ onRefreshApp }: AppProps) {
                 <input ref={backupInputRef} className="sr-only" type="file" accept="application/json,.json" onChange={importData} />
               </div>
               {backupMessage && <p className="backup-message" role="status">{backupMessage}</p>}
+              <p className="eyebrow settings-group-label">Appearance</p>
+              <div className="theme-settings">
+                <label>Theme<select value={themeMode} onChange={(event) => db.settings.put({ key: 'themeMode', value: event.target.value })}>
+                  <option value="auto">Dark at night</option>
+                  <option value="light">Always light</option>
+                  <option value="dark">Always dark</option>
+                </select></label>
+                {themeMode === 'auto' && (
+                  <>
+                    <label>Dark from<input type="time" value={darkModeStart} onChange={(event) => event.target.value && db.settings.put({ key: 'darkModeStart', value: event.target.value })} /></label>
+                    <label>Light from<input type="time" value={darkModeEnd} onChange={(event) => event.target.value && db.settings.put({ key: 'darkModeEnd', value: event.target.value })} /></label>
+                  </>
+                )}
+              </div>
             </div>
           </aside>
         </>

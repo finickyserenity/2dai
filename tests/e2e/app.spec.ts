@@ -423,6 +423,41 @@ test('edits the title in a growing field and keeps notes on their own tab', asyn
   await expect.poll(() => storedTask(page, 'A much longer task title that certainly has to wrap onto a second line to fit inside the sheet').then((task) => task?.notes)).toBe('Line one only')
 })
 
+test('switches to the dark theme overnight on an adjustable schedule', async ({ page }) => {
+  const now = new Date()
+  const theme = () => page.evaluate(() => document.documentElement.dataset.theme)
+  await page.clock.install({ time: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 0, 0) })
+  await page.reload()
+  await expect(page.getByRole('heading', { name: 'User' })).toBeVisible()
+  await expect.poll(theme).toBe('dark')
+  expect(await page.evaluate(() => getComputedStyle(document.body).colorScheme)).toBe('dark')
+  expect(await page.evaluate(() => document.querySelector('meta[name="theme-color"]')?.getAttribute('content'))).not.toBe('#1e5784')
+
+  // 8:30 the next morning flips back without a reload.
+  await page.clock.fastForward('09:31:00')
+  await expect.poll(theme).toBe('light')
+  await page.clock.fastForward('14:00:00')
+  await expect.poll(theme).toBe('dark')
+
+  await page.getByRole('button', { name: 'Open menu' }).click()
+  await expect(page.getByLabel('Dark from')).toHaveValue('22:30')
+  await expect(page.getByLabel('Light from')).toHaveValue('08:30')
+  // It is 10:31pm now, so pushing the start past that turns the lights back on.
+  await page.getByLabel('Dark from').fill('23:00')
+  await expect.poll(theme).toBe('light')
+  await page.getByLabel('Theme').selectOption('Always dark')
+  await expect.poll(theme).toBe('dark')
+  await expect(page.getByLabel('Dark from')).toHaveCount(0)
+
+  await page.reload()
+  await expect(page.getByRole('heading', { name: 'User' })).toBeVisible()
+  await expect.poll(theme).toBe('dark')
+  await page.getByRole('button', { name: 'Open menu' }).click()
+  await page.getByLabel('Theme').selectOption('Dark at night')
+  await expect(page.getByLabel('Dark from')).toHaveValue('23:00')
+  await expect.poll(theme).toBe('light')
+})
+
 test('sorts lists and section options while persisting section display preferences', async ({ page }) => {
   await page.getByLabel('Planning range').getByRole('button', { name: 'Lists' }).click()
   const names = await page.locator('.list-grid strong').allTextContents()

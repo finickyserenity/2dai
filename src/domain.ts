@@ -245,3 +245,31 @@ export function formatFriendlyDate(date: Date): string {
     day: 'numeric',
   }).format(date)
 }
+export type ThemeMode = 'auto' | 'light' | 'dark'
+export const DEFAULT_DARK_START = '22:30'
+export const DEFAULT_DARK_END = '08:30'
+
+function minutesOfDay(time: string): number {
+  const [hours = 0, minutes = 0] = time.split(':').map(Number)
+  return hours * 60 + minutes
+}
+
+// Whether the dark window (which usually wraps past midnight) covers the given moment.
+export function isDarkHours(now: Date, darkStart: string, darkEnd: string): boolean {
+  const start = minutesOfDay(darkStart)
+  const end = minutesOfDay(darkEnd)
+  const current = now.getHours() * 60 + now.getMinutes()
+  if (start === end) return false
+  return start < end ? current >= start && current < end : current >= start || current < end
+}
+
+// The next moment the theme should flip, so a timer can wake up exactly then.
+export function nextThemeChange(now: Date, darkStart: string, darkEnd: string): Date {
+  const candidates = [darkStart, darkEnd].map((time) => {
+    const [hours = 0, minutes = 0] = time.split(':').map(Number)
+    const next = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hours, minutes, 0, 0)
+    if (next <= now) next.setDate(next.getDate() + 1)
+    return next
+  })
+  return new Date(Math.min(...candidates.map((date) => date.getTime())))
+}

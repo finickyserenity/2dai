@@ -2,8 +2,14 @@
   --body: 'DM Sans', sans-serif;
   --display: 'Manrope', sans-serif;
   --ink: #172737;
+  --ink-strong: #000;
   --muted: #6b7d8d;
+  --page: #e9eef2;
   --surface: #f7f9fb;
+  --panel: #fff;
+  --panel-muted: #eef3f6;
+  --panel-faint: #fafbfc;
+  --topbar: rgba(255, 255, 255, .92);
   --line: #dce4ea;
   --line-strong: #bccbd7;
   --blue-50: #edf5fb;
@@ -14,12 +20,62 @@
   --blue-600: #286b9f;
   --blue-700: #1e5784;
   --blue-800: #19486d;
+  --danger: #a33c43;
+  --danger-line: #e3c5c8;
+  --star: #c38b00;
+  --warning-ink: #76531c;
+  --warning-line: #ead6aa;
+  --warning-bg: #fff9eb;
+  --scrim: rgba(20, 35, 49, .3);
+  --scrim-strong: rgba(20, 35, 49, .42);
+  --shadow-color: rgba(19, 48, 73, .18);
+  --shadow-color-strong: rgba(19, 48, 73, .24);
+  --shadow-soft: rgba(29, 75, 116, .08);
+  --pulse: rgba(40, 107, 159, .22);
+  color-scheme: light;
   color: var(--ink);
-  background: #e9eef2;
+  background: var(--page);
   font: 16px/1.4 var(--body);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
+}
+
+/* Night palette: keeps the same blue accents, lifts panels just above the page, and lowers
+   contrast so the screen is comfortable with the lights off. */
+:root[data-theme='dark'] {
+  --ink: #dfe7ee;
+  --ink-strong: #fff;
+  --muted: #8fa1b1;
+  --page: #0e151c;
+  --surface: #141d25;
+  --panel: #1a252f;
+  --panel-muted: #212e3a;
+  --panel-faint: #17222c;
+  --topbar: rgba(20, 29, 37, .92);
+  --line: #2a3945;
+  --line-strong: #3b4f60;
+  --blue-50: #1d2f3f;
+  --blue-100: #22394d;
+  --blue-200: #2f4d66;
+  --blue-400: #5f95c2;
+  --blue-500: #5c9ad0;
+  --blue-600: #3f80ba;
+  --blue-700: #3572a8;
+  --blue-800: #cfe3f5;
+  --danger: #e2848b;
+  --danger-line: #6b3a3f;
+  --star: #e2b23c;
+  --warning-ink: #e8c97a;
+  --warning-line: #5e4d24;
+  --warning-bg: #2a2414;
+  --scrim: rgba(0, 0, 0, .5);
+  --scrim-strong: rgba(0, 0, 0, .62);
+  --shadow-color: rgba(0, 0, 0, .5);
+  --shadow-color-strong: rgba(0, 0, 0, .6);
+  --shadow-soft: rgba(0, 0, 0, .25);
+  --pulse: rgba(95, 149, 194, .35);
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
