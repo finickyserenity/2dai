@@ -70,13 +70,13 @@ test('creates a future-dated task from its subject and edits it with the date pi
   await expect(page.getByRole('button', { name: 'E2E dated task', exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Options for E2E dated task' }).click()
 
-  await expect(page.getByLabel('Due date')).toHaveValue(expectedDate)
-  await expect(page.getByLabel('Weekday time')).toHaveValue('14:30')
-  await page.getByLabel('Due date').fill(`${candidate.getFullYear()}-12-12`)
+  await expect(page.getByLabel('Due date', { exact: true })).toHaveValue(expectedDate)
+  await expect(page.getByLabel('Weekday time', { exact: true })).toHaveValue('14:30')
+  await page.getByLabel('Due date', { exact: true }).fill(`${candidate.getFullYear()}-12-12`)
   await page.getByRole('button', { name: 'Done' }).click()
 
   await page.getByRole('button', { name: 'Options for E2E dated task' }).click()
-  await expect(page.getByLabel('Due date')).toHaveValue(`${candidate.getFullYear()}-12-12`)
+  await expect(page.getByLabel('Due date', { exact: true })).toHaveValue(`${candidate.getFullYear()}-12-12`)
 })
 
 test('adds, edits, and completes tasks offline without randomUUID', async ({ page }) => {
@@ -376,12 +376,12 @@ test('constrains a task due date with multiple calendar filters', async ({ page 
 
   const filters = page.getByLabel('Due filters')
   await expect(filters).toHaveAttribute('rows', '2')
-  await page.getByLabel('Due date').fill('2026-09-17')
+  await page.getByLabel('Due date', { exact: true }).fill('2026-09-17')
   await filters.fill('monday, q4')
   await page.getByRole('button', { name: 'Done' }).click()
 
   await page.getByRole('button', { name: 'Options for Filtered due task' }).click()
-  await expect(page.getByLabel('Due date')).toHaveValue('2026-10-05')
+  await expect(page.getByLabel('Due date', { exact: true })).toHaveValue('2026-10-05')
   await expect(page.getByLabel('Due filters')).toHaveValue('monday, q4')
 })
 
@@ -456,6 +456,63 @@ test('switches to the dark theme overnight on an adjustable schedule', async ({ 
   await page.getByLabel('Theme').selectOption('Dark at night')
   await expect(page.getByLabel('Dark from')).toHaveValue('23:00')
   await expect.poll(theme).toBe('light')
+})
+
+test('adds a pending entry when focus leaves the quick-add box', async ({ page }) => {
+  const entry = page.getByRole('textbox', { name: 'New task' })
+  await entry.fill('Blur added task')
+  // Moving to the list picker keeps the entry pending; leaving the form adds it.
+  await page.getByRole('combobox', { name: 'Task list' }).focus()
+  await expect(page.getByText('Blur added task', { exact: true })).toHaveCount(0)
+  await entry.focus()
+  await page.getByLabel('Show managed').focus()
+  await expect(page.getByText('Blur added task', { exact: true })).toBeVisible()
+  await expect(entry).toHaveValue('')
+  expect(await entry.getAttribute('maxlength')).toBe('300')
+})
+
+test('pins a task to the next named weekday from its subject', async ({ page }) => {
+  const now = new Date()
+  const target = new Date(now.getFullYear(), now.getMonth(), now.getDate() + ((5 - now.getDay() + 7) % 7 || 7), 12)
+  const entry = page.getByRole('textbox', { name: 'New task' })
+  await entry.fill('Weekday pinned task next friday')
+  await entry.press('Enter')
+  await expect.poll(() => storedTask(page, 'Weekday pinned task').then((task) => task?.nextDueAt)).toBe(localDateKey(target))
+})
+
+test('clears time, last-completed and due date fields from the options sheet', async ({ page }) => {
+  await page.getByLabel('Planning range').getByRole('button', { name: 'Lists' }).click()
+  await page.locator('.list-grid').getByRole('button', { name: /^Personal\b/ }).click()
+  await page.getByRole('button', { name: "Options for Check today's schedule" }).click()
+
+  const dialog = page.getByRole('dialog')
+  const timeField = dialog.getByLabel(/^Week(day|end) time$/)
+  await expect(timeField).toHaveValue('08:00')
+  await dialog.getByRole('button', { name: /Clear week(day|end) time/ }).click()
+  await expect(timeField).toHaveValue('')
+  await expect(dialog.getByRole('button', { name: /Clear week(day|end) time/ })).toHaveCount(0)
+
+  await expect(dialog.getByRole('button', { name: 'Clear last completed' })).toHaveCount(0)
+  await dialog.getByLabel('Last completed', { exact: true }).fill('2026-09-01')
+  await dialog.getByRole('button', { name: 'Clear last completed' }).click()
+  await expect(dialog.getByLabel('Last completed', { exact: true })).toHaveValue('')
+  expect(await dialog.getByLabel('Title').getAttribute('maxlength')).toBe('300')
+  await dialog.getByRole('tab', { name: 'Notes' }).click()
+  expect(await dialog.getByRole('textbox', { name: 'Notes' }).getAttribute('maxlength')).toBe('10000')
+  await dialog.getByRole('button', { name: 'Done' }).click()
+
+  await page.getByRole('button', { name: "Options for Check today's schedule" }).click()
+  await expect(page.getByRole('dialog').getByLabel(/^Week(day|end) time$/)).toHaveValue('')
+
+  // Clearing the due date takes the task out of the planner and drops its repeat.
+  await expect(dialog.getByLabel('Repeat every')).toHaveValue('1')
+  await dialog.getByRole('button', { name: 'Clear due date' }).click()
+  await expect(dialog.getByLabel('Due date', { exact: true })).toHaveValue('')
+  await expect(dialog.getByLabel('Repeat every')).toHaveValue('')
+  await dialog.getByRole('button', { name: 'Done' }).click()
+  await expect(page.getByRole('button', { name: "Add Check today's schedule to Today" })).toBeVisible()
+  await page.getByLabel('Planning range').getByRole('button', { name: 'Today' }).click()
+  await expect(page.getByText("Check today's schedule", { exact: true })).toHaveCount(0)
 })
 
 test('sorts lists and section options while persisting section display preferences', async ({ page }) => {

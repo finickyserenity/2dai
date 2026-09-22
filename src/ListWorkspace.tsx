@@ -16,9 +16,10 @@ import {
   X,
 } from 'lucide-react'
 import { db } from './db'
+import { submitOnLeave } from './forms'
 import { createId } from './id'
 import { ImportListDialog } from './ImportListDialog.tsx'
-import { isWeekend, parseTaskInput, type ProjectFolder, type Task, type TaskAction, type TaskList, type TaskSection } from './domain'
+import { isWeekend, parseTaskInput, TITLE_MAX_LENGTH, type ProjectFolder, type Task, type TaskAction, type TaskList, type TaskSection } from './domain'
 
 interface ListWorkspaceProps {
   lists: TaskList[]
@@ -496,7 +497,7 @@ function SheetSection({ section, name, tasks, sectionTasks = [], focusedTaskId, 
           })}
           <form className="raw-add-row" onSubmit={addRow}>
             <Plus size={17} />
-            <input value={entry} onChange={(event) => setEntry(event.target.value)} placeholder={`Add to ${name}`} aria-label={`Add task to ${name}`} />
+            <input value={entry} maxLength={TITLE_MAX_LENGTH} onChange={(event) => setEntry(event.target.value)} onBlur={submitOnLeave} placeholder={`Add to ${name}`} aria-label={`Add task to ${name}`} />
             <button type="submit" disabled={!entry.trim()}>Add row</button>
           </form>
         </>

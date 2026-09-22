@@ -70,6 +70,16 @@ describe('parseTaskInput', () => {
     expect(parseTaskInput('Later 10/5', new Date(2026, 8, 17, 12)).dueDate).toBe('2026-10-05')
   })
 
+  it('pins the due date to the next named weekday', () => {
+    // 2026-09-17 is a Thursday.
+    expect(parseTaskInput('Call the bank monday', '2026-09-17')).toMatchObject({ title: 'Call the bank', dueDate: '2026-09-21' })
+    expect(parseTaskInput('Gym Fri 6a', '2026-09-17')).toMatchObject({ title: 'Gym', dueDate: '2026-09-18', preferredTime: '06:00' })
+    expect(parseTaskInput('Thursday review', '2026-09-17').dueDate).toBe('2026-09-17')
+    expect(parseTaskInput('Next Thursday review', '2026-09-17')).toMatchObject({ title: 'review', dueDate: '2026-09-24' })
+    expect(parseTaskInput('Weds 4/20', '2026-09-17')).toMatchObject({ title: 'Weds', dueDate: '2027-04-20' })
+    expect(parseTaskInput('Monday-morning stretch', '2026-09-17')).toMatchObject({ title: 'Monday-morning stretch', dueDate: undefined })
+  })
+
   it('uses next year after the month and day have passed', () => {
     expect(parseTaskInput('Taxes 4/15', '2026-09-17')).toMatchObject({ title: 'Taxes', dueDate: '2027-04-15' })
   })

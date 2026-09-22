@@ -92,6 +92,13 @@ export interface ParsedTaskInput {
 const TIME_PATTERN = /(?:^|\s)(?:at\s+)?(1[0-2]|0?[1-9])(?::([0-5]\d))?\s*(a(?:m)?|p(?:m)?)(?=\s|$)/i
 const RECURRENCE_PATTERN = /(?:^|\s)(\d+)d(!)?(?=\s|$)/i
 const DATE_PATTERN = /(?:^|\s)(1[0-2]|0?[1-9])\/(3[01]|[12]\d|0?[1-9])(?=\s|$)/
+// A weekday name pins the task to its next occurrence; "next" skips today when it is that day.
+const WEEKDAY_PATTERN = /(?:^|\s)(next\s+)?(mon|monday|tue|tues|tuesday|wed|weds|wednesday|thu|thur|thurs|thursday|fri|friday|sat|saturday|sun|sunday)(?=\s|$)/i
+const WEEKDAY_NUMBERS: Record<string, number> = {
+  sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6,
+}
+export const TITLE_MAX_LENGTH = 300
+export const NOTES_MAX_LENGTH = 10_000
 
 export function parseTaskInput(input: string, referenceDay: Date | string = new Date()): ParsedTaskInput {
   const recurrenceMatch = input.match(RECURRENCE_PATTERN)
@@ -99,7 +106,11 @@ export function parseTaskInput(input: string, referenceDay: Date | string = new 
   const timeMatch = withoutRecurrence.match(TIME_PATTERN)
   const withoutTime = timeMatch ? withoutRecurrence.replace(timeMatch[0], ' ') : withoutRecurrence
   const dateMatch = withoutTime.match(DATE_PATTERN)
-  const dueDate = dateMatch ? resolveDueDate(Number(dateMatch[1]), Number(dateMatch[2]), referenceDay) : undefined
+  const weekdayMatch = dateMatch ? null : withoutTime.match(WEEKDAY_PATTERN)
+  const dueDate = dateMatch
+    ? resolveDueDate(Number(dateMatch[1]), Number(dateMatch[2]), referenceDay)
+    : weekdayMatch ? resolveWeekday(WEEKDAY_NUMBERS[weekdayMatch[2].slice(0, 3).toLowerCase()], Boolean(weekdayMatch[1]), referenceDay) : undefined
+  const withoutDate = dateMatch && dueDate ? withoutTime.replace(dateMatch[0], ' ') : weekdayMatch ? withoutTime.replace(weekdayMatch[0], ' ') : withoutTime
   let preferredTime: string | undefined
 
   if (timeMatch) {
@@ -109,7 +120,7 @@ export function parseTaskInput(input: string, referenceDay: Date | string = new 
   }
 
   return {
-    title: (dateMatch && dueDate ? withoutTime.replace(dateMatch[0], ' ') : withoutTime).replace(/\s+/g, ' ').trim(),
+    title: withoutDate.replace(/\s+/g, ' ').trim(),
     preferredTime,
     dueDate,
     intervalDays: recurrenceMatch ? Number(recurrenceMatch[1]) : undefined,
@@ -123,6 +134,12 @@ function resolveDueDate(month: number, day: number, referenceDay: Date | string)
   if (candidate.getMonth() !== month - 1 || candidate.getDate() !== day) return undefined
   if (dateKey(candidate) < dateKey(reference)) candidate.setFullYear(candidate.getFullYear() + 1)
   return dateKey(candidate)
+}
+
+function resolveWeekday(weekday: number, skipToday: boolean, referenceDay: Date | string): string {
+  const reference = typeof referenceDay === 'string' ? new Date(`${referenceDay}T12:00:00`) : referenceDay
+  const ahead = (weekday - reference.getDay() + 7) % 7
+  return dateKey(addDays(reference, ahead === 0 && skipToday ? 7 : ahead))
 }
 
 export function dateKey(date: Date): string {

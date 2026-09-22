@@ -104,6 +104,10 @@ main { padding: 28px 24px 56px; }
 .option-grid .due-filters-field { grid-column: 1 / -1; }
 .option-grid label { min-width: 0; display: grid; gap: 6px; color: var(--muted); font-size: 12px; font-weight: 700; }
 .option-grid input, .option-grid select, .option-grid textarea { width: 100%; min-width: 0; box-sizing: border-box; padding: 10px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel); color: var(--ink); font: 500 14px/1.45 var(--body); }
+.option-grid .clearable-field { min-width: 0; display: grid; gap: 6px; }
+.clearable-input { position: relative; display: block; }
+.clearable-input input { padding-right: 34px; }
+.clear-field { position: absolute; top: 50%; right: 4px; width: 28px; height: 28px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 4px; color: var(--muted); background: var(--panel); transform: translateY(-50%); }
 .option-grid textarea { min-height: calc(2 * 1.45em + 20px); resize: vertical; }
 .toggle-row { display: flex; justify-content: space-between; align-items: center; gap: 18px; margin-top: 18px; padding: 14px 0; border-block: 1px solid var(--line); }
 .toggle-row span { display: grid; gap: 2px; }
@@ -207,6 +211,7 @@ main { padding: 28px 24px 56px; }
   .task-actions button:hover { background: var(--blue-50); }
   .task-actions button[aria-pressed='true']:hover { background: var(--blue-600); }
   .sheet-menu button:hover, .tracking-actions button:hover { border-color: var(--blue-400); background: var(--blue-50); }
+  .clear-field:hover { color: var(--ink); background: var(--panel-muted); }
   .raw-check:hover { color: white; background: var(--blue-600); }
 }
 .raw-task-name { overflow: hidden; padding: 7px 8px; text-align: left; border: 0; color: var(--ink); background: transparent; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }

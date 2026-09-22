@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ChangeEvent, type ComponentProps, type FormEvent, type ReactNode } from 'react'
+import { Fragment, useEffect, useId, useLayoutEffect, useRef, useState, type ChangeEvent, type ComponentProps, type FormEvent, type ReactNode } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
   CalendarDays,
@@ -22,6 +22,7 @@ import {
   X,
 } from 'lucide-react'
 import { createBackup, db, restoreBackup } from './db'
+import { submitOnLeave } from './forms'
 import { createId } from './id'
 import { ListWorkspace } from './ListWorkspace'
 import {
@@ -39,8 +40,10 @@ import {
   nextAllowedDueDate,
   nextDueDate,
   nextThemeChange,
+  NOTES_MAX_LENGTH,
   parseTaskInput,
   preferredTimeFor,
+  TITLE_MAX_LENGTH,
   trackedMilliseconds,
   type DelayTarget,
   type Task,
@@ -636,7 +639,7 @@ function App({ onRefreshApp }: AppProps) {
         {view === 'today' && (
           <form className="quick-add" onSubmit={addTask}>
             <Plus size={21} aria-hidden="true" />
-            <input value={entry} onChange={(event) => setEntry(event.target.value)} placeholder="Add a task, try ‘Call Mom 2:30p 7d!’" aria-label="New task" />
+            <input value={entry} maxLength={TITLE_MAX_LENGTH} onChange={(event) => setEntry(event.target.value)} onBlur={submitOnLeave} placeholder="Add a task, try ‘Call Mom 2:30p 7d!’" aria-label="New task" />
             <select value={entryListId} onChange={(event) => setEntryListId(event.target.value)} aria-label="Task list">
               {snapshot.lists.map((list) => <option key={list.id} value={list.id}>{list.name}</option>)}
             </select>
@@ -753,7 +756,7 @@ function App({ onRefreshApp }: AppProps) {
             <div className="sheet-heading">
               <div>
                 <p className="eyebrow">Task options</p>
-                <GrowingTextarea className="sheet-title-input" aria-label="Title" value={taskTitleDraft} placeholder="Task title" onChange={(event) => setTaskTitleDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void saveTaskOptions() } }} />
+                <GrowingTextarea className="sheet-title-input" aria-label="Title" value={taskTitleDraft} maxLength={TITLE_MAX_LENGTH} placeholder="Task title" onChange={(event) => setTaskTitleDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void saveTaskOptions() } }} />
               </div>
               <button className="text-button" type="button" disabled={!taskTitleDraft.trim()} onClick={saveTaskOptions}>Done</button>
             </div>
@@ -765,7 +768,7 @@ function App({ onRefreshApp }: AppProps) {
             {/* Both panels stay mounted in one grid cell so the sheet keeps the height of the taller one. */}
             <div className="sheet-panels">
             <div id="options-panel-notes" role="tabpanel" aria-labelledby="options-tab-notes" className={`notes-panel${optionsTab === 'notes' ? '' : ' inactive'}`}>
-              <textarea aria-label="Notes" value={notesDraft} placeholder="Anything else worth remembering about this task" onChange={(event) => setNotesDraft(event.target.value)} />
+              <textarea aria-label="Notes" value={notesDraft} maxLength={NOTES_MAX_LENGTH} placeholder="Anything else worth remembering about this task" onChange={(event) => setNotesDraft(event.target.value)} />
             </div>
             <div id="options-panel-details" role="tabpanel" aria-labelledby="options-tab-details" className={optionsTab === 'details' ? undefined : 'inactive'}>
             <div className="option-grid">
@@ -774,9 +777,15 @@ function App({ onRefreshApp }: AppProps) {
               <label>Project<select value={selectedTask.projectId ?? ''} onChange={(event) => updateTask({ projectId: event.target.value || undefined })}><option value="">Top level</option>{snapshot.projects.filter((project) => project.listId === selectedTask.listId && !project.archived).map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>
               <label>Effort<input type="number" min="1" max="10" value={selectedTask.effort} onChange={(event) => updateTask({ effort: Number(event.target.value) })} /></label>
               <label>Repeat every<input type="number" min="1" placeholder="Days" value={selectedTask.intervalDays ?? ''} onChange={(event) => updateTask({ intervalDays: event.target.value ? Number(event.target.value) : undefined })} /></label>
-              <label>{isWeekend(activeDate) ? 'Weekend time' : 'Weekday time'}<input type="time" value={preferredTimeFor(selectedTask, activeDate) ?? ''} onChange={(event) => updateTask(preferredTimeChanges(event.target.value || undefined, activeDate, 'explicit'))} /></label>
-              <label>Due date<input type="date" value={selectedTask.nextDueAt} onChange={(event) => event.target.value && updateTask({ nextDueAt: event.target.value, archived: false, scheduledForPlanner: selectedTask.intervalDays ? undefined : true })} /></label>
-              <label>Last completed<input type="date" value={lastCompletedDraft} onClick={() => setLastCompletedTouched(true)} onChange={(event) => { setLastCompletedDraft(event.target.value); setLastCompletedTouched(true) }} /></label>
+              <ClearableField label={isWeekend(activeDate) ? 'Weekend time' : 'Weekday time'} value={preferredTimeFor(selectedTask, activeDate) ?? ''} onClear={() => updateTask({ ...preferredTimeChanges(undefined, activeDate, 'explicit'), preferredTime: undefined, preferredTimeSource: undefined })}>
+                {(id) => <input id={id} type="time" value={preferredTimeFor(selectedTask, activeDate) ?? ''} onChange={(event) => updateTask(preferredTimeChanges(event.target.value || undefined, activeDate, 'explicit'))} />}
+              </ClearableField>
+              <ClearableField label="Due date" value={isUnscheduled(selectedTask) ? '' : selectedTask.nextDueAt} onClear={() => updateTask({ scheduledForPlanner: false, intervalDays: undefined })}>
+                {(id) => <input id={id} type="date" value={isUnscheduled(selectedTask) ? '' : selectedTask.nextDueAt} onChange={(event) => event.target.value && updateTask({ nextDueAt: event.target.value, archived: false, scheduledForPlanner: selectedTask.intervalDays ? undefined : true })} />}
+              </ClearableField>
+              <ClearableField label="Last completed" value={lastCompletedDraft} onClear={() => { setLastCompletedDraft(''); setLastCompletedTouched(true) }}>
+                {(id) => <input id={id} type="date" value={lastCompletedDraft} onClick={() => setLastCompletedTouched(true)} onChange={(event) => { setLastCompletedDraft(event.target.value); setLastCompletedTouched(true) }} />}
+              </ClearableField>
               <label className="due-filters-field">Due filters<textarea rows={2} value={dueFiltersDraft} onChange={(event) => setDueFiltersDraft(event.target.value)} placeholder="weekday, mon, q1, 14th" /></label>
             </div>
             <label className="toggle-row"><span><strong>Fixed schedule</strong><small>Repeat from the scheduled date, not completion</small></span><input type="checkbox" checked={selectedTask.fixedInterval} onChange={(event) => updateTask({ fixedInterval: event.target.checked })} /></label>
@@ -796,6 +805,22 @@ const OPTIONS_TABS: Array<{ tab: OptionsTab; label: string }> = [
   { tab: 'details', label: 'Details' },
   { tab: 'notes', label: 'Notes' },
 ]
+
+// A labelled native date/time input with a clear button, since iOS pickers have no way to empty
+// one. The button sits beside the input rather than inside the label so it does not become part
+// of the input's accessible name.
+function ClearableField({ label, value, onClear, children }: { label: string; value: string; onClear: () => void; children: (id: string) => ReactNode }) {
+  const id = useId()
+  return (
+    <div className="clearable-field">
+      <label htmlFor={id}>{label}</label>
+      <span className="clearable-input">
+        {children(id)}
+        {value && <button type="button" className="clear-field" aria-label={`Clear ${label.toLowerCase()}`} onClick={onClear}><X size={15} /></button>}
+      </span>
+    </div>
+  )
+}
 
 // A single-row textarea that grows with its content instead of scrolling.
 function GrowingTextarea({ value, ...props }: ComponentProps<'textarea'> & { value: string }) {
@@ -929,6 +954,11 @@ function formatElapsed(milliseconds: number): string {
   const hours = Math.floor(seconds / 3_600)
   const rest = `${String(Math.floor(seconds / 60) % 60).padStart(hours ? 2 : 1, '0')}:${String(seconds % 60).padStart(2, '0')}`
   return hours ? `${hours}:${rest}` : rest
+}
+
+// A task with no repeat that is not in the planner only lives in its list, so it has no due date to show.
+function isUnscheduled(task: Task): boolean {
+  return !task.intervalDays && task.scheduledForPlanner !== true
 }
 
 function tasksForView(tasks: Task[], view: PlannerView, activeDate: Date, managedIds: Set<string>, showCompleted: boolean): Task[] {
