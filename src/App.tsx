@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useId, useLayoutEffect, useRef, useState, type ChangeEvent, type ComponentProps, type FormEvent, type ReactNode } from 'react'
+import { Fragment, useEffect, useId, useLayoutEffect, useRef, useState, type ChangeEvent, type ComponentProps, type CSSProperties, type FormEvent, type ReactNode } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
   CalendarDays,
@@ -98,6 +98,8 @@ function App({ onRefreshApp }: AppProps) {
   const [currentDay, setCurrentDay] = useState(() => dateKey(new Date()))
   const [editingUserName, setEditingUserName] = useState(false)
   const [userNameDraft, setUserNameDraft] = useState('')
+  const [leavingRows, setLeavingRows] = useState<Record<string, number>>({})
+  const leaveTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>())
   const backupInputRef = useRef<HTMLInputElement>(null)
   const cancelUserNameEditRef = useRef(false)
 
@@ -441,6 +443,38 @@ function App({ onRefreshApp }: AppProps) {
     })
   }
 
+  // Checking a task off plays a short strike-and-slide before the row goes, so it is clear what
+  // happened. Tapping the box again during that moment cancels it.
+  function completeTask(task: Task, row: HTMLElement | null) {
+    const pending = leaveTimers.current.get(task.id)
+    if (pending) {
+      clearTimeout(pending)
+      leaveTimers.current.delete(task.id)
+      setLeavingRows((rows) => withoutKey(rows, task.id))
+      return
+    }
+    const staysVisible = managedEvents.has(task.id) || showCompleted
+    if (staysVisible || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      void manageTask(task, 'completed')
+      return
+    }
+    setLeavingRows((rows) => ({ ...rows, [task.id]: row?.offsetHeight ?? 70 }))
+    leaveTimers.current.set(task.id, setTimeout(async () => {
+      leaveTimers.current.delete(task.id)
+      await manageTask(task, 'completed')
+      // The row stays collapsed until the live query drops it (see the effect below); this
+      // only restores it if the completion somehow did not stick.
+      setTimeout(() => setLeavingRows((rows) => withoutKey(rows, task.id)), 1_000)
+    }, ROW_LEAVE_MS))
+  }
+
+  // Clearing the leaving state before the snapshot catches up would flash the row back for a
+  // frame, so wait until the task shows as managed.
+  useEffect(() => {
+    const settled = Object.keys(leavingRows).filter((id) => !leaveTimers.current.has(id) && managedEvents.has(id))
+    if (settled.length) setLeavingRows((rows) => settled.reduce(withoutKey, rows))
+  }, [leavingRows, managedEvents])
+
   function openTaskOptions(taskId: string) {
     const task = snapshot.tasks.find((item) => item.id === taskId)
     setTaskTitleDraft(task?.title ?? '')
@@ -689,12 +723,14 @@ function App({ onRefreshApp }: AppProps) {
               const groupKey = view === 'month' ? weekGroupKey(groupDate) : groupDate
               const previousGroupKey = previousGroupDate && (view === 'month' ? weekGroupKey(previousGroupDate) : previousGroupDate)
               const isRare = (view === 'week' || view === 'month') && (!task.intervalDays || task.intervalDays >= 180)
+              const leavingHeight = leavingRows[task.id]
+              const isChecked = managedAction === 'completed' || leavingHeight !== undefined
               return (
                 <Fragment key={task.id}>
                   {view === 'week' && groupDate !== previousGroupDate && <div className="task-day-divider">{formatDayGroup(groupDate, snapshot.activeDay)}</div>}
                   {view === 'month' && groupKey !== previousGroupKey && <MonthWeekDivider value={groupDate} />}
-                  <article className={`task-row${isManaged ? ' managed' : ''}${isNotDue ? ' not-due' : ''}`}>
-                    <button className="complete-button" type="button" onClick={() => manageTask(task, 'completed')} aria-pressed={managedAction === 'completed'} aria-label={`${managedAction === 'completed' ? 'Uncheck' : 'Complete'} ${task.title}`}><Check size={20} /></button>
+                  <article className={`task-row${isManaged ? ' managed' : ''}${isNotDue ? ' not-due' : ''}${leavingHeight !== undefined ? ' leaving' : ''}`} style={leavingHeight !== undefined ? { '--row-height': `${leavingHeight}px` } as CSSProperties : undefined}>
+                    <button className="complete-button" type="button" onClick={(event) => completeTask(task, event.currentTarget.closest('.task-row'))} aria-pressed={isChecked} aria-label={`${isChecked ? 'Uncheck' : 'Complete'} ${task.title}`}><Check size={20} /></button>
                     <button className="task-copy" type="button" onClick={() => openTaskInList(task)}>
                       <span className={`task-title${isRare ? ' rare' : ''}`}>{isRare && <Star className="task-title-star" size={15} fill="currentColor" aria-hidden="true" />}{task.title}</span>
                       <span className="task-meta">
@@ -800,6 +836,15 @@ function App({ onRefreshApp }: AppProps) {
 }
 
 type OptionsTab = 'details' | 'notes'
+
+// Matches the row-leave animation length in App.css.
+const ROW_LEAVE_MS = 900
+
+function withoutKey<T>(record: Record<string, T>, key: string): Record<string, T> {
+  const rest = { ...record }
+  delete rest[key]
+  return rest
+}
 
 const OPTIONS_TABS: Array<{ tab: OptionsTab; label: string }> = [
   { tab: 'details', label: 'Details' },

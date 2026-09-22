@@ -303,6 +303,7 @@ test('tracks effort from the play button until the task is checked off', async (
   await expect(page.getByRole('button', { name: 'Effort 4 for Tracked task, tracking' })).toBeVisible()
 
   await page.getByRole('button', { name: 'Complete Tracked task' }).click()
+  await page.clock.runFor(1_000) // let the completion animation finish and commit
   await page.getByLabel('Show managed').check()
   await expect(page.getByRole('button', { name: 'Uncheck Tracked task' })).toBeVisible()
   let task = await storedTask(page, 'Tracked task')
@@ -513,6 +514,76 @@ test('clears time, last-completed and due date fields from the options sheet', a
   await expect(page.getByRole('button', { name: "Add Check today's schedule to Today" })).toBeVisible()
   await page.getByLabel('Planning range').getByRole('button', { name: 'Today' }).click()
   await expect(page.getByText("Check today's schedule", { exact: true })).toHaveCount(0)
+})
+
+test('strikes through and slides a completed task away, and a second tap cancels it', async ({ page }) => {
+  const entry = page.getByRole('textbox', { name: 'New task' })
+  await entry.fill('Animated task')
+  await entry.press('Enter')
+  const row = page.locator('.task-row', { hasText: 'Animated task' })
+  await expect(row).toBeVisible()
+
+  await page.getByRole('button', { name: 'Complete Animated task' }).click()
+  await expect(row).toHaveClass(/leaving/)
+  await expect(page.getByRole('button', { name: 'Uncheck Animated task' })).toHaveAttribute('aria-pressed', 'true')
+  expect(await row.evaluate((element) => getComputedStyle(element).animationName)).toBe('row-leave')
+
+  // Tapping again before it goes cancels the completion.
+  await page.getByRole('button', { name: 'Uncheck Animated task' }).click()
+  await expect(row).not.toHaveClass(/leaving/)
+  await page.waitForTimeout(1_100)
+  await expect(row).toBeVisible()
+  expect(await page.evaluate(async () => {
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open('2dai-local')
+      request.onerror = () => reject(request.error)
+      request.onsuccess = () => resolve(request.result)
+    })
+    const request = database.transaction('events', 'readonly').objectStore('events').count()
+    return new Promise<number>((resolve) => { request.onsuccess = () => resolve(request.result) })
+  })).toBe(0)
+
+  await page.getByRole('button', { name: 'Complete Animated task' }).click()
+  // The slide must not widen the page, or a horizontal scrollbar shifts the layout.
+  const overflowed = await page.evaluate(() => new Promise<number[]>((resolve) => {
+    const samples: number[] = []
+    const start = performance.now()
+    const sample = () => {
+      samples.push(document.documentElement.scrollWidth - document.documentElement.clientWidth)
+      if (performance.now() - start < 800) requestAnimationFrame(sample)
+      else resolve(samples)
+    }
+    requestAnimationFrame(sample)
+  }))
+  expect(Math.max(...overflowed)).toBe(0)
+  await expect(row).toHaveCount(0)
+  await page.getByLabel('Show managed').check()
+  await expect(page.getByRole('button', { name: 'Uncheck Animated task' })).toHaveAttribute('aria-pressed', 'true')
+})
+
+test('never flashes a completed row back before the empty state appears', async ({ page }) => {
+  for (const title of ["Check today's schedule", 'Tidy up']) {
+    await page.getByRole('button', { name: `Complete ${title}` }).click()
+    await expect(page.locator('.task-row', { hasText: title })).toHaveCount(0)
+  }
+  const entry = page.getByRole('textbox', { name: 'New task' })
+  await entry.fill('Last task standing')
+  await entry.press('Enter')
+  const row = page.locator('.task-row', { hasText: 'Last task standing' })
+  await expect(row).toBeVisible()
+
+  // Record every class change on the row: once it starts leaving it must stay that way until removed.
+  await row.evaluate((element) => {
+    const log: string[] = []
+    new MutationObserver(() => log.push(element.className)).observe(element, { attributes: true, attributeFilter: ['class'] })
+    ;(window as unknown as { rowClasses: string[] }).rowClasses = log
+  })
+  await page.getByRole('button', { name: 'Complete Last task standing' }).click()
+  await expect(row).toHaveCount(0)
+  await expect(page.getByText('Nothing waiting here')).toBeVisible()
+  const classes = await page.evaluate(() => (window as unknown as { rowClasses: string[] }).rowClasses)
+  expect(classes[0]).toContain('leaving')
+  expect(classes.filter((value) => !value.includes('leaving'))).toEqual([])
 })
 
 test('sorts lists and section options while persisting section display preferences', async ({ page }) => {
