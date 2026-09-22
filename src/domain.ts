@@ -33,6 +33,7 @@ export interface Task {
   sectionId?: string
   projectId?: string
   title: string
+  notes?: string
   position: number
   effort: number
   intervalDays?: number

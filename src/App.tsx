@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react'
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ChangeEvent, type ComponentProps, type FormEvent, type ReactNode } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
   CalendarDays,
@@ -77,6 +77,8 @@ function App({ onRefreshApp }: AppProps) {
   const [dueFiltersDraft, setDueFiltersDraft] = useState('')
   const [lastCompletedDraft, setLastCompletedDraft] = useState('')
   const [lastCompletedTouched, setLastCompletedTouched] = useState(false)
+  const [notesDraft, setNotesDraft] = useState('')
+  const [optionsTab, setOptionsTab] = useState<OptionsTab>('details')
   const [showCompleted, setShowCompleted] = useState(false)
   const [sheetListId, setSheetListId] = useState<string>()
   const [sheetProjectId, setSheetProjectId] = useState<string>()
@@ -404,19 +406,29 @@ function App({ onRefreshApp }: AppProps) {
     setDueFiltersDraft(task?.dueFilters ?? '')
     setLastCompletedDraft(task?.lastCompletedAt ? dateKey(new Date(task.lastCompletedAt)) : '')
     setLastCompletedTouched(false)
+    setNotesDraft(task?.notes ?? '')
+    setOptionsTab('details')
     setSelectedTaskId(taskId)
   }
 
+  function notesChanges(): Partial<Task> {
+    const notes = notesDraft.trim()
+    return selectedTask && notes !== (selectedTask.notes ?? '') ? { notes: notes || undefined } : {}
+  }
+
   function closeTaskOptions() {
+    // Notes can be long, so dismissing the sheet keeps them rather than throwing the draft away.
+    const changes = notesChanges()
+    if (Object.keys(changes).length) void updateTask(changes)
     setSelectedTaskId(undefined)
     setLastCompletedTouched(false)
   }
 
   async function saveTaskOptions() {
     if (selectedTask) {
-      const title = taskTitleDraft.trim()
+      const title = taskTitleDraft.replace(/\s+/g, ' ').trim()
       if (!title) return
-      const changes: Partial<Task> = title !== selectedTask.title ? { title } : {}
+      const changes: Partial<Task> = { ...notesChanges(), ...(title !== selectedTask.title ? { title } : {}) }
       const dueFilters = dueFiltersDraft.trim()
       if (dueFilters !== (selectedTask.dueFilters ?? '')) changes.dueFilters = dueFilters || undefined
       if (lastCompletedTouched) {
@@ -684,14 +696,27 @@ function App({ onRefreshApp }: AppProps) {
 
       {selectedTask && (
         <div className="sheet-backdrop" role="presentation" onMouseDown={closeTaskOptions}>
-          <section className="options-sheet" role="dialog" aria-modal="true" aria-labelledby="options-title" onMouseDown={(event) => event.stopPropagation()}>
+          <section className="options-sheet" role="dialog" aria-modal="true" aria-label="Task options" onMouseDown={(event) => event.stopPropagation()}>
             <div className="sheet-handle" />
             <div className="sheet-heading">
-              <div><p className="eyebrow">Task options</p><h3 id="options-title">{selectedTask.title}</h3></div>
+              <div>
+                <p className="eyebrow">Task options</p>
+                <GrowingTextarea className="sheet-title-input" aria-label="Title" value={taskTitleDraft} placeholder="Task title" onChange={(event) => setTaskTitleDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void saveTaskOptions() } }} />
+              </div>
               <button className="text-button" type="button" disabled={!taskTitleDraft.trim()} onClick={saveTaskOptions}>Done</button>
             </div>
+            <div className="sheet-tabs" role="tablist" aria-label="Task options">
+              {OPTIONS_TABS.map(({ tab, label }) => (
+                <button key={tab} id={`options-tab-${tab}`} type="button" role="tab" aria-selected={optionsTab === tab} aria-controls={`options-panel-${tab}`} tabIndex={optionsTab === tab ? 0 : -1} onClick={() => setOptionsTab(tab)}>{label}</button>
+              ))}
+            </div>
+            {/* Both panels stay mounted in one grid cell so the sheet keeps the height of the taller one. */}
+            <div className="sheet-panels">
+            <div id="options-panel-notes" role="tabpanel" aria-labelledby="options-tab-notes" className={`notes-panel${optionsTab === 'notes' ? '' : ' inactive'}`}>
+              <textarea aria-label="Notes" value={notesDraft} placeholder="Anything else worth remembering about this task" onChange={(event) => setNotesDraft(event.target.value)} />
+            </div>
+            <div id="options-panel-details" role="tabpanel" aria-labelledby="options-tab-details" className={optionsTab === 'details' ? undefined : 'inactive'}>
             <div className="option-grid">
-              <label className="subject-field">Subject<input value={taskTitleDraft} onChange={(event) => setTaskTitleDraft(event.target.value)} /></label>
               <label>List<select value={selectedTask.listId} onChange={(event) => updateTask({ listId: event.target.value })}>{snapshot.lists.map((list) => <option key={list.id} value={list.id}>{list.name}</option>)}</select></label>
               <label>Section<select aria-label="Section" value={selectedTask.sectionId ?? ''} onChange={(event) => updateTask({ sectionId: event.target.value || undefined })}><option value="">Todo</option>{snapshot.sections.filter((section) => section.listId === selectedTask.listId).sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: 'base', numeric: true })).map((section) => <option key={section.id} value={section.id}>{section.name}</option>)}</select></label>
               <label>Project<select value={selectedTask.projectId ?? ''} onChange={(event) => updateTask({ projectId: event.target.value || undefined })}><option value="">Top level</option>{snapshot.projects.filter((project) => project.listId === selectedTask.listId && !project.archived).map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>
@@ -703,12 +728,33 @@ function App({ onRefreshApp }: AppProps) {
               <label className="due-filters-field">Due filters<textarea rows={2} value={dueFiltersDraft} onChange={(event) => setDueFiltersDraft(event.target.value)} placeholder="weekday, mon, q1, 14th" /></label>
             </div>
             <label className="toggle-row"><span><strong>Fixed schedule</strong><small>Repeat from the scheduled date, not completion</small></span><input type="checkbox" checked={selectedTask.fixedInterval} onChange={(event) => updateTask({ fixedInterval: event.target.checked })} /></label>
+            </div>
+            </div>
             <button className="archive-button" type="button" onClick={async () => { await updateTask({ archived: true }); closeTaskOptions() }}>Archive task</button>
           </section>
         </div>
       )}
     </div>
   )
+}
+
+type OptionsTab = 'details' | 'notes'
+
+const OPTIONS_TABS: Array<{ tab: OptionsTab; label: string }> = [
+  { tab: 'details', label: 'Details' },
+  { tab: 'notes', label: 'Notes' },
+]
+
+// A single-row textarea that grows with its content instead of scrolling.
+function GrowingTextarea({ value, ...props }: ComponentProps<'textarea'> & { value: string }) {
+  const ref = useRef<HTMLTextAreaElement>(null)
+  useLayoutEffect(() => {
+    const element = ref.current
+    if (!element) return
+    element.style.height = 'auto'
+    element.style.height = `${element.scrollHeight}px`
+  }, [value])
+  return <textarea ref={ref} rows={1} value={value} {...props} />
 }
 
 const DELAY_TARGETS: Array<{ target: DelayTarget; label: string }> = [

@@ -93,7 +93,7 @@ test('adds, edits, and completes tasks offline without randomUUID', async ({ pag
 
   await page.getByText('Offline task', { exact: true }).click()
   await page.getByRole('button', { name: 'Options for Offline task' }).click()
-  await page.getByLabel('Subject').fill('Offline task edited')
+  await page.getByLabel('Title').fill('Offline task edited')
   await page.getByRole('button', { name: 'Done' }).click()
   await expect(page.getByText('Offline task edited', { exact: true })).toBeVisible()
 
@@ -383,6 +383,44 @@ test('constrains a task due date with multiple calendar filters', async ({ page 
   await page.getByRole('button', { name: 'Options for Filtered due task' }).click()
   await expect(page.getByLabel('Due date')).toHaveValue('2026-10-05')
   await expect(page.getByLabel('Due filters')).toHaveValue('monday, q4')
+})
+
+test('edits the title in a growing field and keeps notes on their own tab', async ({ page }) => {
+  const entry = page.getByRole('textbox', { name: 'New task' })
+  await entry.fill('Notes task')
+  await entry.press('Enter')
+  await page.getByText('Notes task', { exact: true }).click()
+  await page.getByRole('button', { name: 'Options for Notes task' }).click()
+
+  const dialog = page.getByRole('dialog')
+  await expect(dialog.getByRole('heading')).toHaveCount(0)
+  await expect(dialog.getByRole('tab', { name: 'Details' })).toHaveAttribute('aria-selected', 'true')
+  await expect(dialog.getByLabel('Due filters')).toBeVisible()
+
+  const title = dialog.getByLabel('Title')
+  const singleLine = await title.evaluate((field) => field.getBoundingClientRect().height)
+  await title.fill('A much longer task title that certainly has to wrap onto a second line to fit inside the sheet')
+  expect(await title.evaluate((field) => field.getBoundingClientRect().height)).toBeGreaterThan(singleLine)
+  expect(await title.evaluate((field) => field.scrollHeight <= field.clientHeight)).toBe(true)
+
+  const sheetHeight = () => dialog.evaluate((sheet) => sheet.getBoundingClientRect().height)
+  const detailsHeight = await sheetHeight()
+  await dialog.getByRole('tab', { name: 'Notes' }).click()
+  await expect(dialog.getByLabel('Due filters')).toBeHidden()
+  expect(await sheetHeight()).toBe(detailsHeight)
+  await dialog.getByRole('textbox', { name: 'Notes' }).fill('Line one\nLine two')
+  await title.press('Enter')
+  await expect(dialog).toHaveCount(0)
+  expect(await storedTask(page, 'A much longer task title that certainly has to wrap onto a second line to fit inside the sheet')).toMatchObject({ notes: 'Line one\nLine two' })
+
+  // Dismissing the sheet without pressing Done still keeps the notes.
+  await page.getByRole('button', { name: /^Options for A much longer/ }).click()
+  await dialog.getByRole('tab', { name: 'Notes' }).click()
+  await expect(dialog.getByRole('textbox', { name: 'Notes' })).toHaveValue('Line one\nLine two')
+  await dialog.getByRole('textbox', { name: 'Notes' }).fill('Line one only')
+  await page.mouse.click(5, 5)
+  await expect(dialog).toHaveCount(0)
+  await expect.poll(() => storedTask(page, 'A much longer task title that certainly has to wrap onto a second line to fit inside the sheet').then((task) => task?.notes)).toBe('Line one only')
 })
 
 test('sorts lists and section options while persisting section display preferences', async ({ page }) => {
