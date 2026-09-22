@@ -586,6 +586,49 @@ test('never flashes a completed row back before the empty state appears', async 
   expect(classes.filter((value) => !value.includes('leaving'))).toEqual([])
 })
 
+test('offers copy, open-link and call actions from a long press on a task', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+  const entry = page.getByRole('textbox', { name: 'New task' })
+  await entry.fill('Call the plumber (555) 123-4567')
+  await entry.press('Enter')
+  await page.getByText('Call the plumber (555) 123-4567', { exact: true }).click()
+  await page.getByRole('button', { name: 'Options for Call the plumber (555) 123-4567' }).click()
+  await page.getByRole('dialog').getByRole('tab', { name: 'Notes' }).click()
+  await page.getByRole('dialog').getByRole('textbox', { name: 'Notes' }).fill('Quote at https://example.com/quote/42. Backup +1 555 987 6543')
+  await page.getByRole('button', { name: 'Done' }).click()
+
+  // Hold the task name in the list view.
+  const name = page.getByRole('button', { name: 'Call the plumber (555) 123-4567', exact: true })
+  const box = await name.boundingBox()
+  await page.mouse.move(box!.x + 20, box!.y + box!.height / 2)
+  await page.mouse.down()
+  await page.waitForTimeout(650)
+  await page.mouse.up()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog.getByRole('heading', { name: 'Call the plumber (555) 123-4567' })).toBeVisible()
+  await expect(dialog.getByRole('link', { name: /Open link example.com\/quote\/42/ })).toHaveAttribute('href', 'https://example.com/quote/42')
+  await expect(dialog.getByRole('link', { name: /Call \(555\) 123-4567/ })).toHaveAttribute('href', 'tel:5551234567')
+  await expect(dialog.getByRole('link', { name: /Call \+1 555 987 6543/ })).toHaveAttribute('href', 'tel:+15559876543')
+
+  await dialog.getByRole('button', { name: 'Copy text and notes' }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(page.getByRole('status')).toHaveText('Copied')
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('Call the plumber (555) 123-4567\n\nQuote at https://example.com/quote/42. Backup +1 555 987 6543')
+
+  // A plain tap still opens the task options, and a right-click also opens the menu.
+  await name.click()
+  await expect(page.getByRole('dialog').getByRole('tab', { name: 'Details' })).toBeVisible()
+  await page.getByRole('button', { name: 'Done' }).click()
+  await name.click({ button: 'right' })
+  await page.getByRole('dialog').getByRole('button', { name: 'Copy text', exact: true }).click()
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('Call the plumber (555) 123-4567')
+
+  // The planner rows offer the same menu.
+  await page.getByLabel('Planning range').getByRole('button', { name: 'Today' }).click()
+  await page.getByText('Call the plumber (555) 123-4567', { exact: true }).click({ button: 'right' })
+  await expect(page.getByRole('dialog').getByRole('button', { name: 'Copy text and notes' })).toBeVisible()
+})
+
 test('sorts lists and section options while persisting section display preferences', async ({ page }) => {
   await page.getByLabel('Planning range').getByRole('button', { name: 'Lists' }).click()
   const names = await page.locator('.list-grid strong').allTextContents()

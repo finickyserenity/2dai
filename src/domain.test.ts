@@ -7,6 +7,8 @@ import {
   isDarkHours,
   nextThemeChange,
   dueDateMatchesFilters,
+  extractLinks,
+  extractPhoneNumbers,
   formatFriendlyDate,
   isWeekend,
   nextAllowedDueDate,
@@ -244,5 +246,23 @@ describe('theme schedule', () => {
     expect(nextThemeChange(new Date(2026, 8, 22, 14, 0), DEFAULT_DARK_START, DEFAULT_DARK_END)).toEqual(new Date(2026, 8, 22, 22, 30))
     expect(nextThemeChange(new Date(2026, 8, 22, 23, 0), DEFAULT_DARK_START, DEFAULT_DARK_END)).toEqual(new Date(2026, 8, 23, 8, 30))
     expect(nextThemeChange(new Date(2026, 8, 22, 22, 30), DEFAULT_DARK_START, DEFAULT_DARK_END)).toEqual(new Date(2026, 8, 23, 8, 30))
+  })
+})
+
+describe('task links', () => {
+  it('finds web links and trims trailing punctuation', () => {
+    expect(extractLinks('Read https://example.com/docs, then www.example.org/a?b=1). Again https://example.com/docs')).toEqual([
+      { href: 'https://example.com/docs', label: 'example.com/docs' },
+      { href: 'https://www.example.org/a?b=1', label: 'www.example.org/a?b=1' },
+    ])
+    expect(extractLinks('No links here 4/20 2:30p')).toEqual([])
+  })
+
+  it('finds phone numbers but not dates or times', () => {
+    expect(extractPhoneNumbers('Call (555) 123-4567 or +44 20 7946 0958 about 2026-09-22 at 2:30, ref 12/25/2026')).toEqual([
+      { href: 'tel:5551234567', label: '(555) 123-4567' },
+      { href: 'tel:+442079460958', label: '+44 20 7946 0958' },
+    ])
+    expect(extractPhoneNumbers('Order 123456 and 1000000 units')).toEqual([{ href: 'tel:1000000', label: '1000000' }])
   })
 })

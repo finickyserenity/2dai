@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { db } from './db'
 import { submitOnLeave } from './forms'
+import { useLongPress } from './longPress'
 import { createId } from './id'
 import { ImportListDialog } from './ImportListDialog.tsx'
 import { isWeekend, parseTaskInput, TITLE_MAX_LENGTH, type ProjectFolder, type Task, type TaskAction, type TaskList, type TaskSection } from './domain'
@@ -35,6 +36,7 @@ interface ListWorkspaceProps {
   onOpenTask: (task: Task) => void
   onManage: (task: Task, action: TaskAction) => Promise<void>
   onEdit: (taskId: string) => void
+  onActions: (taskId: string) => void
 }
 
 export function ListWorkspace({
@@ -51,6 +53,7 @@ export function ListWorkspace({
   onOpenTask,
   onManage,
   onEdit,
+  onActions,
 }: ListWorkspaceProps) {
   const [search, setSearch] = useState('')
   const [creationMode, setCreationMode] = useState<'section' | 'project'>()
@@ -221,6 +224,7 @@ export function ListWorkspace({
         managedTaskIds={managedTaskIds}
         onManage={onManage}
         onEdit={onEdit}
+        onActions={onActions}
       />
       {listSections.map((section, index) => (
         <SheetSection
@@ -237,6 +241,7 @@ export function ListWorkspace({
           managedTaskIds={managedTaskIds}
           onManage={onManage}
           onEdit={onEdit}
+          onActions={onActions}
           onMoveSection={moveSection}
           canMoveSectionUp={index > 0}
           canMoveSectionDown={index < listSections.length - 1}
@@ -362,12 +367,13 @@ interface SheetSectionProps {
   managedTaskIds: Set<string>
   onManage: (task: Task, action: TaskAction) => Promise<void>
   onEdit: (taskId: string) => void
+  onActions: (taskId: string) => void
   onMoveSection?: (section: TaskSection, offset: -1 | 1) => Promise<void>
   canMoveSectionUp?: boolean
   canMoveSectionDown?: boolean
 }
 
-function SheetSection({ section, name, tasks, sectionTasks = [], focusedTaskId, listId, sectionId, projectId, activeDay, managedTaskIds, onManage, onEdit, onMoveSection, canMoveSectionUp, canMoveSectionDown }: SheetSectionProps) {
+function SheetSection({ section, name, tasks, sectionTasks = [], focusedTaskId, listId, sectionId, projectId, activeDay, managedTaskIds, onManage, onEdit, onActions, onMoveSection, canMoveSectionUp, canMoveSectionDown }: SheetSectionProps) {
   const [entry, setEntry] = useState('')
   const collapseStorageKey = `2dai:section-collapsed:${listId}:${projectId ?? 'root'}:${sectionId ?? 'todo'}`
   const [collapsed, setCollapsed] = useState(() => readCollapsedState(collapseStorageKey))
@@ -484,7 +490,7 @@ function SheetSection({ section, name, tasks, sectionTasks = [], focusedTaskId, 
               {isUnscheduled
                 ? <button className="raw-check raw-schedule" type="button" onClick={() => scheduleTask(task)} aria-label={`Add ${task.title} to Today`} title="Add to Today"><Plus size={16} /></button>
                 : <button className="raw-check" type="button" onClick={() => onManage(task, 'completed')} aria-pressed={isManaged} aria-label={`${isManaged ? 'Uncheck' : 'Complete'} ${task.title}`}><Check size={16} /></button>}
-              <button className="raw-task-name" type="button" onClick={() => onEdit(task.id)}>{task.title}</button>
+              <TaskName title={task.title} onOpen={() => onEdit(task.id)} onActions={() => onActions(task.id)} />
               <span>{shortDate(task.nextDueAt)}</span>
               <span>{task.intervalDays ? `${task.intervalDays}${task.fixedInterval ? '!' : ''}d` : '—'}</span>
               <div className="raw-row-actions">
@@ -516,4 +522,9 @@ function readCollapsedState(key: string): boolean {
 
 function shortDate(value: string): string {
   return new Intl.DateTimeFormat('en-US', { month: 'numeric', day: 'numeric' }).format(new Date(`${value}T12:00:00`))
+}
+// A list row's title: tap opens the task options, holding opens the actions menu.
+function TaskName({ title, onOpen, onActions }: { title: string; onOpen: () => void; onActions: () => void }) {
+  const press = useLongPress(onActions, onOpen)
+  return <button className="raw-task-name" type="button" aria-haspopup="dialog" {...press}>{title}</button>
 }

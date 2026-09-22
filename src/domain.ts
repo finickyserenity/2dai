@@ -290,3 +290,36 @@ export function nextThemeChange(now: Date, darkStart: string, darkEnd: string): 
   })
   return new Date(Math.min(...candidates.map((date) => date.getTime())))
 }
+
+const URL_PATTERN = /\bhttps?:\/\/[^\s<>"']+|\bwww\.[^\s<>"']+/gi
+const PHONE_PATTERN = /\+?\(?\d[\d\s().-]{5,}\d/g
+const DATE_LIKE = /^\d{4}-\d{2}-\d{2}$|^\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}$/
+
+export interface TaskLink {
+  href: string
+  label: string
+}
+
+// Web links found in free text, ready to open. Trailing punctuation is left out of the address.
+export function extractLinks(text: string): TaskLink[] {
+  const links = new Map<string, TaskLink>()
+  for (const match of text.match(URL_PATTERN) ?? []) {
+    const raw = match.replace(/[.,;:!?)\]}'"]+$/, '')
+    const href = /^https?:/i.test(raw) ? raw : `https://${raw}`
+    if (!links.has(href)) links.set(href, { href, label: raw.replace(/^https?:\/\//i, '') })
+  }
+  return [...links.values()]
+}
+
+// Phone numbers found in free text as tel: links. Needs at least seven digits and skips dates.
+export function extractPhoneNumbers(text: string): TaskLink[] {
+  const numbers = new Map<string, TaskLink>()
+  for (const match of text.match(PHONE_PATTERN) ?? []) {
+    const label = match.trim()
+    const digits = label.replace(/\D/g, '')
+    if (digits.length < 7 || digits.length > 15 || DATE_LIKE.test(label)) continue
+    const href = `tel:${label.startsWith('+') ? '+' : ''}${digits}`
+    if (!numbers.has(href)) numbers.set(href, { href, label })
+  }
+  return [...numbers.values()]
+}

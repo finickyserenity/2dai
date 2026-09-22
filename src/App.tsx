@@ -4,14 +4,18 @@ import {
   CalendarDays,
   Check,
   ChevronRight,
+  ClipboardList,
   Clock3,
+  Copy,
   Download,
+  ExternalLink,
   FolderKanban,
   LibraryBig,
   ListTodo,
   Menu,
   MoreHorizontal,
   Pause,
+  Phone,
   Play,
   Plus,
   RotateCcw,
@@ -23,6 +27,7 @@ import {
 } from 'lucide-react'
 import { createBackup, db, restoreBackup } from './db'
 import { submitOnLeave } from './forms'
+import { useLongPress } from './longPress'
 import { createId } from './id'
 import { ListWorkspace } from './ListWorkspace'
 import {
@@ -33,6 +38,8 @@ import {
   delayTargetDate,
   effortFromTracked,
   EFFORT_UNIT_MS,
+  extractLinks,
+  extractPhoneNumbers,
   formatFriendlyDate,
   isDarkHours,
   isTracking,
@@ -81,6 +88,8 @@ function App({ onRefreshApp }: AppProps) {
   const [selectedTaskId, setSelectedTaskId] = useState<string>()
   const [delayMenuTaskId, setDelayMenuTaskId] = useState<string>()
   const [trackingTaskId, setTrackingTaskId] = useState<string>()
+  const [actionsTaskId, setActionsTaskId] = useState<string>()
+  const [toast, setToast] = useState('')
   const [taskTitleDraft, setTaskTitleDraft] = useState('')
   const [dueFiltersDraft, setDueFiltersDraft] = useState('')
   const [lastCompletedDraft, setLastCompletedDraft] = useState('')
@@ -227,8 +236,25 @@ function App({ onRefreshApp }: AppProps) {
   const selectedTask = snapshot.tasks.find((task) => task.id === selectedTaskId)
   const delayMenuTask = snapshot.tasks.find((task) => task.id === delayMenuTaskId)
   const trackingTask = snapshot.tasks.find((task) => task.id === trackingTaskId && isTracking(task))
+  const actionsTask = snapshot.tasks.find((task) => task.id === actionsTaskId)
 
-  const isSheetOpen = Boolean(selectedTask || delayMenuTask || trackingTask)
+  const isSheetOpen = Boolean(selectedTask || delayMenuTask || trackingTask || actionsTask)
+
+  useEffect(() => {
+    if (!toast) return
+    const timer = setTimeout(() => setToast(''), 2_200)
+    return () => clearTimeout(timer)
+  }, [toast])
+
+  async function copyText(text: string) {
+    setActionsTaskId(undefined)
+    try {
+      await navigator.clipboard.writeText(text)
+      setToast('Copied')
+    } catch {
+      setToast('Could not copy on this device')
+    }
+  }
   useLayoutEffect(() => {
     if (!isSheetOpen) return
     // Keep the list behind a sheet from scrolling. Where the scrollbar takes up room, pad by its
@@ -667,6 +693,7 @@ function App({ onRefreshApp }: AppProps) {
             onOpenTask={openTaskInList}
             onManage={manageTask}
             onEdit={openTaskOptions}
+            onActions={setActionsTaskId}
           />
         )}
 
@@ -731,14 +758,14 @@ function App({ onRefreshApp }: AppProps) {
                   {view === 'month' && groupKey !== previousGroupKey && <MonthWeekDivider value={groupDate} />}
                   <article className={`task-row${isManaged ? ' managed' : ''}${isNotDue ? ' not-due' : ''}${leavingHeight !== undefined ? ' leaving' : ''}`} style={leavingHeight !== undefined ? { '--row-height': `${leavingHeight}px` } as CSSProperties : undefined}>
                     <button className="complete-button" type="button" onClick={(event) => completeTask(task, event.currentTarget.closest('.task-row'))} aria-pressed={isChecked} aria-label={`${isChecked ? 'Uncheck' : 'Complete'} ${task.title}`}><Check size={20} /></button>
-                    <button className="task-copy" type="button" onClick={() => openTaskInList(task)}>
+                    <TaskRowBody onOpen={() => openTaskInList(task)} onActions={() => setActionsTaskId(task.id)}>
                       <span className={`task-title${isRare ? ' rare' : ''}`}>{isRare && <Star className="task-title-star" size={15} fill="currentColor" aria-hidden="true" />}{task.title}</span>
                       <span className="task-meta">
                         <i style={{ background: list?.color }} /> {list?.name ?? 'Unsorted'}
                         {preferredTime && <><Clock3 size={13} /> {formatTime(preferredTime)}</>}
                         {view !== 'today' && <span className="task-due">Due {formatFriendlyDate(new Date(`${task.nextDueAt}T12:00:00`))}</span>}
                       </span>
-                    </button>
+                    </TaskRowBody>
                     <div className="task-actions">
                       {!isManaged && <DelayButton title={task.title} onDelay={() => manageTask(task, 'delayed')} onOpenMenu={() => setDelayMenuTaskId(task.id)} />}
                       {managedAction === 'delayed' && <button type="button" onClick={() => manageTask(task, 'delayed')} title="Undo delay" aria-pressed="true" aria-label={`Undo delay for ${task.title}`}><Clock3 size={18} /></button>}
@@ -758,6 +785,30 @@ function App({ onRefreshApp }: AppProps) {
           </div>
         </section>}
       </main>
+
+      {toast && <div className="toast" role="status">{toast}</div>}
+
+      {actionsTask && (
+        <SheetBackdrop onClose={() => setActionsTaskId(undefined)}>
+          <section className="options-sheet" role="dialog" aria-modal="true" aria-labelledby="actions-title">
+            <div className="sheet-handle" />
+            <div className="sheet-heading">
+              <div><p className="eyebrow">Task actions</p><h3 id="actions-title">{actionsTask.title}</h3></div>
+              <button className="text-button" type="button" onClick={() => setActionsTaskId(undefined)}>Cancel</button>
+            </div>
+            <div className="sheet-menu">
+              <button type="button" onClick={() => copyText(actionsTask.title)}><Copy size={18} /><span>Copy text</span></button>
+              {actionsTask.notes && <button type="button" onClick={() => copyText(`${actionsTask.title}\n\n${actionsTask.notes}`)}><ClipboardList size={18} /><span>Copy text and notes</span></button>}
+              {extractLinks(`${actionsTask.title}\n${actionsTask.notes ?? ''}`).map((link) => (
+                <a key={link.href} href={link.href} target="_blank" rel="noopener noreferrer" onClick={() => setActionsTaskId(undefined)}><ExternalLink size={18} /><span>Open link</span><small>{link.label}</small></a>
+              ))}
+              {extractPhoneNumbers(`${actionsTask.title}\n${actionsTask.notes ?? ''}`).map((phone) => (
+                <a key={phone.href} href={phone.href} onClick={() => setActionsTaskId(undefined)}><Phone size={18} /><span>Call</span><small>{phone.label}</small></a>
+              ))}
+            </div>
+          </section>
+        </SheetBackdrop>
+      )}
 
       {delayMenuTask && (
         <SheetBackdrop onClose={() => setDelayMenuTaskId(undefined)}>
@@ -886,48 +937,17 @@ const DELAY_TARGETS: Array<{ target: DelayTarget; label: string }> = [
   { target: 'month', label: 'Until next month' },
 ]
 
-const LONG_PRESS_MS = 500
-
 function DelayButton({ title, onDelay, onOpenMenu }: { title: string; onDelay: () => void; onOpenMenu: () => void }) {
-  const timer = useRef<number | undefined>(undefined)
-  const menuOpened = useRef(false)
-
-  function cancel() {
-    window.clearTimeout(timer.current)
-  }
-
-  function openMenu() {
-    cancel()
-    if (menuOpened.current) return
-    menuOpened.current = true
-    onOpenMenu()
-  }
-
-  useEffect(() => cancel, [])
-
+  const press = useLongPress(onOpenMenu, onDelay)
   return (
-    <button
-      className="delay-button"
-      type="button"
-      title="Delay one day (hold for more)"
-      aria-label={`Delay ${title}`}
-      aria-haspopup="dialog"
-      onPointerDown={(event) => {
-        if (event.button !== 0) return
-        menuOpened.current = false
-        timer.current = window.setTimeout(openMenu, LONG_PRESS_MS)
-      }}
-      onPointerUp={cancel}
-      onPointerLeave={cancel}
-      onPointerCancel={cancel}
-      onContextMenu={(event) => { event.preventDefault(); openMenu() }}
-      onClick={() => {
-        // The release that ends a long press must not also delay the task.
-        if (menuOpened.current) { menuOpened.current = false; return }
-        onDelay()
-      }}
-    ><Clock3 size={18} /></button>
+    <button className="delay-button" type="button" title="Delay one day (hold for more)" aria-label={`Delay ${title}`} aria-haspopup="dialog" {...press}><Clock3 size={18} /></button>
   )
+}
+
+// Row body for a planner task: tap opens it in its list, holding opens the actions menu.
+function TaskRowBody({ onOpen, onActions, children }: { onOpen: () => void; onActions: () => void; children: ReactNode }) {
+  const press = useLongPress(onActions, onOpen)
+  return <button className="task-copy" type="button" aria-haspopup="dialog" {...press}>{children}</button>
 }
 
 function SheetBackdrop({ onClose, children }: { onClose: () => void; children: ReactNode }) {
