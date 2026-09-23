@@ -472,6 +472,29 @@ test('adds a pending entry when focus leaves the quick-add box', async ({ page }
   expect(await entry.getAttribute('maxlength')).toBe('300')
 })
 
+test('adds an entry once when its Add button is tapped without taking focus, as on iOS', async ({ page }) => {
+  await page.getByLabel('Planning range').getByRole('button', { name: 'Lists' }).click()
+  await page.locator('.list-grid').getByRole('button', { name: /^Personal\b/ }).click()
+  const entry = page.getByRole('textbox', { name: 'Add task to Todo' })
+  await entry.fill('Tapped once')
+  // iOS blurs the field without focusing the button, then delivers the click that submits.
+  await entry.evaluate((input: HTMLInputElement) => { input.blur(); input.form!.requestSubmit() })
+  await page.waitForTimeout(400)
+  await expect(page.getByRole('button', { name: 'Tapped once', exact: true })).toHaveCount(1)
+
+  // The checkmark alone (a blur with no click to follow) still adds the entry.
+  await entry.fill('Checkmark only')
+  await entry.evaluate((input: HTMLInputElement) => input.blur())
+  await expect(page.getByRole('button', { name: 'Checkmark only', exact: true })).toHaveCount(1)
+  await expect(entry).toHaveValue('')
+
+  // A mouse click on Add row leaves focus in the entry for the next task.
+  await entry.fill('Clicked add')
+  await page.getByRole('button', { name: 'Add row' }).click()
+  await expect(page.getByRole('button', { name: 'Clicked add', exact: true })).toHaveCount(1)
+  await expect(entry).toBeFocused()
+})
+
 test('pins a task to the next named weekday from its subject', async ({ page }) => {
   const now = new Date()
   const target = new Date(now.getFullYear(), now.getMonth(), now.getDate() + ((5 - now.getDay() + 7) % 7 || 7), 12)
@@ -625,6 +648,7 @@ test('offers copy, open-link and call actions from a long press on a task', asyn
   await page.getByRole('dialog').getByRole('tab', { name: 'Notes' }).click()
   await page.getByRole('dialog').getByRole('textbox', { name: 'Notes' }).fill('Quote at https://example.com/quote/42. Backup +1 555 987 6543')
   await page.getByRole('button', { name: 'Done' }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
 
   // Hold the task name in the list view.
   const name = page.getByRole('button', { name: 'Call the plumber (555) 123-4567', exact: true })

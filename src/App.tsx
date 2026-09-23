@@ -26,7 +26,7 @@ import {
   X,
 } from 'lucide-react'
 import { createBackup, db, restoreBackup } from './db'
-import { submitOnLeave } from './forms'
+import { keepEntryFocus, submitOnLeave } from './forms'
 import { useLongPress } from './longPress'
 import { createId } from './id'
 import { ListWorkspace } from './ListWorkspace'
@@ -722,7 +722,7 @@ function App({ onRefreshApp }: AppProps) {
             <select value={entryListId} onChange={(event) => setEntryListId(event.target.value)} aria-label="Task list">
               {snapshot.lists.map((list) => <option key={list.id} value={list.id}>{list.name}</option>)}
             </select>
-            <button type="submit" disabled={!entry.trim()}>Add</button>
+            <button type="submit" disabled={!entry.trim()} onMouseDown={keepEntryFocus}>Add</button>
           </form>
         )}
 

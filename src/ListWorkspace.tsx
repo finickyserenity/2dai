@@ -16,7 +16,7 @@ import {
   X,
 } from 'lucide-react'
 import { db } from './db'
-import { submitOnLeave } from './forms'
+import { keepEntryFocus, submitOnLeave } from './forms'
 import { useLongPress } from './longPress'
 import { createId } from './id'
 import { ImportListDialog } from './ImportListDialog.tsx'
@@ -504,7 +504,7 @@ function SheetSection({ section, name, tasks, sectionTasks = [], focusedTaskId, 
           <form className="raw-add-row" onSubmit={addRow}>
             <Plus size={17} />
             <input value={entry} maxLength={TITLE_MAX_LENGTH} onChange={(event) => setEntry(event.target.value)} onBlur={submitOnLeave} placeholder={`Add to ${name}`} aria-label={`Add task to ${name}`} />
-            <button type="submit" disabled={!entry.trim()}>Add row</button>
+            <button type="submit" disabled={!entry.trim()} onMouseDown={keepEntryFocus}>Add row</button>
           </form>
         </>
       )}
