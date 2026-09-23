@@ -32,6 +32,8 @@
   --shadow-color-strong: rgba(19, 48, 73, .24);
   --shadow-soft: rgba(29, 75, 116, .08);
   --pulse: rgba(40, 107, 159, .22);
+  --status-bar: #1e5784; /* painted under the iOS status bar; matches theme-color */
+  --top-inset: env(safe-area-inset-top, 0px);
   color-scheme: light;
   color: var(--ink);
   background: var(--page);
@@ -75,9 +77,12 @@
   --shadow-color-strong: rgba(0, 0, 0, .6);
   --shadow-soft: rgba(0, 0, 0, .25);
   --pulse: rgba(95, 149, 194, .35);
+  --status-bar: #141d25;
   color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
 body { min-width: 320px; min-height: 100vh; margin: 0; }
+/* Fills the notch/status-bar area on iOS (viewport-fit=cover) so it recolors with the theme immediately. */
+body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: var(--top-inset); z-index: 50; background: var(--status-bar); pointer-events: none; }
 button, input, select { letter-spacing: 0; }
