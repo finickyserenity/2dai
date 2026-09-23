@@ -52,10 +52,12 @@ main { padding: 28px 24px 56px; }
 .section-label { min-height: 34px; display: flex; align-items: center; justify-content: space-between; color: var(--muted); font-size: 12px; font-weight: 700; text-transform: uppercase; }
 .section-label label { display: flex; align-items: center; gap: 6px; text-transform: none; font-weight: 600; }
 .task-list { border-top: 1px solid var(--line); overflow-x: clip; } /* keeps a sliding row from adding a horizontal scrollbar */
+/* Side lines live on the rows (and dividers) rather than the list, so they leave with a completed row. */
+.task-list > .task-row, .task-list > .task-day-divider, .task-list > .task-week-divider { border-inline: 1px solid var(--line); }
 .task-day-divider { min-height: 34px; display: flex; align-items: center; padding: 0 8px; border-bottom: 1px solid var(--line); color: var(--muted); background: var(--surface); font-size: 11px; font-weight: 700; text-transform: uppercase; }
 .task-week-divider { min-height: 38px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 8px; border-bottom: 1px solid var(--line); color: var(--muted); background: var(--surface); font-size: 11px; font-weight: 700; text-transform: uppercase; }
 .task-week-divider strong { color: var(--blue-700); }
-.task-row { min-height: 70px; display: grid; grid-template-columns: 42px 1fr auto; align-items: center; gap: 8px; border-bottom: 1px solid var(--line); background: var(--panel); }
+.task-row { min-height: 70px; display: grid; grid-template-columns: 42px 1fr auto; align-items: center; gap: 8px; padding-left: 8px; border-bottom: 1px solid var(--line); background: var(--panel); }
 .task-row.managed { opacity: .46; }
 /* Completion: strike the title, then slide the row out and close the gap it leaves. */
 .task-row.leaving { position: relative; height: var(--row-height); min-height: 0; overflow: hidden; pointer-events: none; animation: row-leave 900ms ease-in forwards; }
@@ -81,7 +83,7 @@ main { padding: 28px 24px 56px; }
 .task-meta { display: flex; align-items: center; gap: 6px; margin-top: 5px; color: var(--muted); font-size: 11px; }
 .task-meta i { width: 7px; height: 7px; border-radius: 50%; }
 .task-due { margin-left: 10px; }
-.task-actions { display: flex; padding-right: 4px; }
+.task-actions { display: flex; padding-right: 10px; }
 .task-actions button { width: 37px; height: 37px; display: grid; place-items: center; border: 0; border-radius: 5px; color: var(--blue-600); background: transparent; }
 .task-actions button[aria-pressed='true'] { color: white; background: var(--blue-600); }
 .delay-button, .task-copy, .raw-task-name { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
