@@ -60,7 +60,8 @@ main { padding: 28px 24px 56px; }
 /* Completion: strike the title, then slide the row out and close the gap it leaves. */
 .task-row.leaving { position: relative; height: var(--row-height); min-height: 0; overflow: hidden; pointer-events: none; animation: row-leave 900ms ease-in forwards; }
 .task-row.leaving .complete-button { pointer-events: auto; color: white; border-color: var(--blue-600); background: var(--blue-600); }
-.task-row.leaving .task-title { position: relative; display: inline-block; max-width: 100%; }
+/* fit-content (not inline-block) keeps the strike text-wide without adding a line box below the title. */
+.task-row.leaving .task-title { position: relative; width: fit-content; max-width: 100%; }
 .task-row.leaving .task-title::after { content: ''; position: absolute; left: 0; top: calc(50% - 1px); width: 100%; height: 2px; background: currentColor; transform-origin: left; animation: row-strike 280ms ease-out forwards; }
 @keyframes row-strike { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 @keyframes row-leave {
