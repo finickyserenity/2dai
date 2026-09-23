@@ -114,6 +114,7 @@ main { padding: 28px 24px 56px; }
 .text-button:disabled { opacity: .45; cursor: default; }
 .option-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .option-grid .due-filters-field { grid-column: 1 / -1; }
+.option-grid .effort-field { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
 .option-grid label { min-width: 0; display: grid; gap: 6px; color: var(--muted); font-size: 12px; font-weight: 700; }
 .option-grid input, .option-grid select, .option-grid textarea { width: 100%; min-width: 0; box-sizing: border-box; padding: 10px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel); color: var(--ink); font: 500 14px/1.45 var(--body); }
 .option-grid .clearable-field { min-width: 0; display: grid; gap: 6px; }
@@ -293,6 +294,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
   .sheet-tabs { gap: 18px; margin-bottom: 12px; }
   .option-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px 12px; }
   .option-grid input, .option-grid select, .option-grid textarea { padding: 8px 10px; }
+  .option-grid .effort-field { gap: 10px; }
   .option-grid input[type="date"], .option-grid input[type="time"], .theme-settings input[type="time"] { min-height: 41px; -webkit-appearance: none; appearance: none; text-align: left; }
   .toggle-row { margin-top: 14px; padding: 10px 0; }
   .archive-button { margin-top: 10px; }

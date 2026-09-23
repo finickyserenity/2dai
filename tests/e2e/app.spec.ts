@@ -516,6 +516,35 @@ test('clears time, last-completed and due date fields from the options sheet', a
   await expect(page.getByText("Check today's schedule", { exact: true })).toHaveCount(0)
 })
 
+test('keeps effort and its hours and minutes in step as either is edited', async ({ page }) => {
+  await page.getByLabel('Planning range').getByRole('button', { name: 'Lists' }).click()
+  await page.locator('.list-grid').getByRole('button', { name: /^Personal\b/ }).click()
+  await page.getByRole('button', { name: "Options for Check today's schedule" }).click()
+
+  const dialog = page.getByRole('dialog')
+  const effort = dialog.getByLabel('Effort', { exact: true })
+  const hours = dialog.getByLabel('Hours', { exact: true })
+  const minutes = dialog.getByLabel('Minutes', { exact: true })
+  await expect(effort).toHaveValue('1')
+  await expect(hours).toHaveValue('')
+  await expect(minutes).toHaveValue('5')
+
+  // Editing the duration updates effort as you type, without rounding what was typed.
+  await hours.fill('1')
+  await expect(effort).toHaveValue('13')
+  await minutes.fill('21')
+  await expect(effort).toHaveValue('17')
+  await expect(minutes).toHaveValue('21')
+  await expect.poll(async () => (await storedTask(page, "Check today's schedule"))?.effort).toBe(17)
+
+  // Editing effort directly rewrites the duration.
+  await effort.fill('30')
+  await expect(hours).toHaveValue('2')
+  await expect(minutes).toHaveValue('30')
+  await dialog.getByRole('button', { name: 'Done' }).click()
+  await expect.poll(async () => (await storedTask(page, "Check today's schedule"))?.effort).toBe(30)
+})
+
 test('strikes through and slides a completed task away, and a second tap cancels it', async ({ page }) => {
   const entry = page.getByRole('textbox', { name: 'New task' })
   await entry.fill('Animated task')

@@ -168,6 +168,16 @@ export function effortFromTracked(milliseconds: number): number {
   return Math.max(1, Math.ceil(milliseconds / EFFORT_UNIT_MS))
 }
 
+export function effortFromDuration(hours: number, minutes: number): number {
+  const total = (Number.isFinite(hours) ? Math.max(0, hours) : 0) * 60 + (Number.isFinite(minutes) ? Math.max(0, minutes) : 0)
+  return effortFromTracked(total * 60_000)
+}
+
+export function durationFromEffort(effort: number): { hours: number; minutes: number } {
+  const totalMinutes = Math.max(0, Math.round(effort)) * (EFFORT_UNIT_MS / 60_000)
+  return { hours: Math.floor(totalMinutes / 60), minutes: totalMinutes % 60 }
+}
+
 export function delayTargetDate(target: DelayTarget, activeDay: Date | string): Date {
   const day = typeof activeDay === 'string' ? new Date(`${activeDay}T12:00:00`) : activeDay
   if (target === 'weekend') return addDays(day, day.getDay() === 6 ? 1 : 6 - day.getDay())

@@ -17,6 +17,8 @@ import {
   preferredTimeFor,
   type Task,
   delayTargetDate,
+  durationFromEffort,
+  effortFromDuration,
   effortFromTracked,
   isTracking,
   trackedMilliseconds,
@@ -209,6 +211,16 @@ describe('effort tracking', () => {
     expect(effortFromTracked(5 * 60_000)).toBe(1)
     expect(effortFromTracked(5 * 60_000 + 1)).toBe(2)
     expect(effortFromTracked(61 * 60_000)).toBe(13)
+  })
+
+  it('converts hours and minutes into effort and back', () => {
+    expect(effortFromDuration(0, 0)).toBe(1)
+    expect(effortFromDuration(0, 15)).toBe(3)
+    expect(effortFromDuration(0, 17)).toBe(4)
+    expect(effortFromDuration(2, 30)).toBe(30)
+    expect(effortFromDuration(Number.NaN, -5)).toBe(1)
+    expect(durationFromEffort(3)).toEqual({ hours: 0, minutes: 15 })
+    expect(durationFromEffort(30)).toEqual({ hours: 2, minutes: 30 })
   })
 
   it('adds the running stretch to paused time', () => {

@@ -36,6 +36,8 @@ import {
   DEFAULT_DARK_END,
   DEFAULT_DARK_START,
   delayTargetDate,
+  durationFromEffort,
+  effortFromDuration,
   effortFromTracked,
   EFFORT_UNIT_MS,
   extractLinks,
@@ -95,6 +97,8 @@ function App({ onRefreshApp }: AppProps) {
   const [lastCompletedDraft, setLastCompletedDraft] = useState('')
   const [lastCompletedTouched, setLastCompletedTouched] = useState(false)
   const [notesDraft, setNotesDraft] = useState('')
+  const [effortHoursDraft, setEffortHoursDraft] = useState('')
+  const [effortMinutesDraft, setEffortMinutesDraft] = useState('')
   const [optionsTab, setOptionsTab] = useState<OptionsTab>('details')
   const [showCompleted, setShowCompleted] = useState(false)
   const [sheetListId, setSheetListId] = useState<string>()
@@ -508,8 +512,22 @@ function App({ onRefreshApp }: AppProps) {
     setLastCompletedDraft(task?.lastCompletedAt ? dateKey(new Date(task.lastCompletedAt)) : '')
     setLastCompletedTouched(false)
     setNotesDraft(task?.notes ?? '')
+    setEffortDuration(task?.effort ?? 1)
     setOptionsTab('details')
     setSelectedTaskId(taskId)
+  }
+
+  function setEffortDuration(effort: number) {
+    const { hours, minutes } = durationFromEffort(effort)
+    setEffortHoursDraft(hours ? String(hours) : '')
+    setEffortMinutesDraft(minutes ? String(minutes) : '')
+  }
+
+  // Hours and minutes stay as typed (no rounding under the user's fingers); effort follows them.
+  function updateEffortDuration(hours: string, minutes: string) {
+    setEffortHoursDraft(hours)
+    setEffortMinutesDraft(minutes)
+    void updateTask({ effort: effortFromDuration(Number(hours), Number(minutes)) })
   }
 
   function notesChanges(): Partial<Task> {
@@ -862,7 +880,11 @@ function App({ onRefreshApp }: AppProps) {
               <label>List<select value={selectedTask.listId} onChange={(event) => updateTask({ listId: event.target.value })}>{snapshot.lists.map((list) => <option key={list.id} value={list.id}>{list.name}</option>)}</select></label>
               <label>Section<select aria-label="Section" value={selectedTask.sectionId ?? ''} onChange={(event) => updateTask({ sectionId: event.target.value || undefined })}><option value="">Todo</option>{snapshot.sections.filter((section) => section.listId === selectedTask.listId).sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: 'base', numeric: true })).map((section) => <option key={section.id} value={section.id}>{section.name}</option>)}</select></label>
               <label>Project<select value={selectedTask.projectId ?? ''} onChange={(event) => updateTask({ projectId: event.target.value || undefined })}><option value="">Top level</option>{snapshot.projects.filter((project) => project.listId === selectedTask.listId && !project.archived).map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>
-              <label>Effort<input type="number" min="1" max="10" value={selectedTask.effort} onChange={(event) => updateTask({ effort: Number(event.target.value) })} /></label>
+              <div className="effort-field">
+                <label>Effort<input type="number" min="1" value={selectedTask.effort} onChange={(event) => { const effort = Number(event.target.value); setEffortDuration(effort); void updateTask({ effort }) }} /></label>
+                <label>Hours<input type="number" min="0" inputMode="numeric" placeholder="0" value={effortHoursDraft} onChange={(event) => updateEffortDuration(event.target.value, effortMinutesDraft)} /></label>
+                <label>Minutes<input type="number" min="0" max="59" step="5" inputMode="numeric" placeholder="0" value={effortMinutesDraft} onChange={(event) => updateEffortDuration(effortHoursDraft, event.target.value)} /></label>
+              </div>
               <label>Repeat every<input type="number" min="1" placeholder="Days" value={selectedTask.intervalDays ?? ''} onChange={(event) => updateTask({ intervalDays: event.target.value ? Number(event.target.value) : undefined })} /></label>
               <ClearableField label={isWeekend(activeDate) ? 'Weekend time' : 'Weekday time'} value={preferredTimeFor(selectedTask, activeDate) ?? ''} onClear={() => updateTask({ ...preferredTimeChanges(undefined, activeDate, 'explicit'), preferredTime: undefined, preferredTimeSource: undefined })}>
                 {(id) => <input id={id} type="time" value={preferredTimeFor(selectedTask, activeDate) ?? ''} onChange={(event) => updateTask(preferredTimeChanges(event.target.value || undefined, activeDate, 'explicit'))} />}
