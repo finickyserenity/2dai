@@ -15,14 +15,17 @@
     "predeploy": "VITE_BASE_PATH=/2dai/ npm run build",
     "deploy": "gh-pages -d dist",
     "generate:pwa-assets": "pwa-assets-generator -r . -p minimal --override public/app-icon.svg",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "sync:protocol": "node scripts/sync-protocol.mjs"
   },
   "dependencies": {
     "@fontsource/dm-sans": "^5.3.0",
     "@fontsource/manrope": "^5.3.0",
     "dexie": "^4.4.6",
     "dexie-react-hooks": "^4.4.0",
+    "jsqr": "^1.4.0",
     "lucide-react": "^1.46.0",
+    "qrcode": "^1.5.4",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },
@@ -30,6 +33,7 @@
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.61.0",
     "@types/node": "^24.13.3",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
     "@vite-pwa/assets-generator": "^1.0.4",

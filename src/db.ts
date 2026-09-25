@@ -1,6 +1,7 @@
 import Dexie, { type EntityTable } from 'dexie'
 import type { AppSetting, ProjectFolder, Task, TaskEvent, TaskList, TaskSection } from './domain'
 import { dateKey } from './domain'
+import type { ServerConnection } from './sync/types'
 
 const BACKUP_FORMAT = '2dai-backup'
 const BACKUP_VERSION = 1
@@ -26,6 +27,7 @@ class TwoDaiDatabase extends Dexie {
   tasks!: EntityTable<Task, 'id'>
   events!: EntityTable<TaskEvent, 'id'>
   settings!: EntityTable<AppSetting, 'key'>
+  servers!: EntityTable<ServerConnection, 'id'>
 
   constructor() {
     super('2dai-local')
@@ -77,6 +79,16 @@ class TwoDaiDatabase extends Dexie {
       await transaction.table('tasks').toCollection().modify((task: Task) => {
         if (!task.intervalDays) task.scheduledForPlanner = false
       })
+    })
+    // Server connections for sync (DESIGN.md 1.1). Task data is untouched.
+    this.version(6).stores({
+      lists: 'id, position',
+      sections: 'id, listId, projectId, [listId+position]',
+      projects: 'id, listId, archived, [listId+position]',
+      tasks: 'id, listId, sectionId, projectId, nextDueAt, archived, position, updatedAt',
+      events: 'id, taskId, effectiveDate, createdAt',
+      settings: 'key',
+      servers: 'id, kind, instanceId',
     })
 
     this.on('populate', () => {
@@ -133,7 +145,7 @@ export const db = new TwoDaiDatabase()
 export async function createBackup(): Promise<TwoDaiBackup> {
   const [lists, sections, projects, tasks, events, settings] = await db.transaction(
     'r',
-    db.tables,
+    [db.lists, db.sections, db.projects, db.tasks, db.events, db.settings],
     () => Promise.all([
       db.lists.toArray(),
       db.sections.toArray(),
@@ -155,8 +167,9 @@ export async function createBackup(): Promise<TwoDaiBackup> {
 export async function restoreBackup(value: unknown): Promise<void> {
   if (!isBackup(value)) throw new Error('This file is not a valid 2dai backup.')
 
-  await db.transaction('rw', db.tables, async () => {
-    await Promise.all(db.tables.map((table) => table.clear()))
+  const dataTables = [db.lists, db.sections, db.projects, db.tasks, db.events, db.settings]
+  await db.transaction('rw', dataTables, async () => {
+    await Promise.all(dataTables.map((table) => table.clear()))
     await db.lists.bulkAdd(value.data.lists)
     await db.sections.bulkAdd(value.data.sections)
     await db.projects.bulkAdd(value.data.projects)

@@ -5,6 +5,7 @@ import {
   Check,
   ChevronRight,
   ClipboardList,
+  Cloud,
   Clock3,
   Copy,
   Download,
@@ -30,6 +31,8 @@ import { keepEntryFocus, submitOnLeave } from './forms'
 import { useLongPress } from './longPress'
 import { createId } from './id'
 import { ListWorkspace } from './ListWorkspace'
+import { SyncSettings } from './sync/SyncSettings'
+import { parseConnectInput, type ConnectTarget } from './sync/encoding'
 import {
   addDays,
   dateKey,
@@ -105,6 +108,8 @@ function App({ onRefreshApp }: AppProps) {
   const [sheetProjectId, setSheetProjectId] = useState<string>()
   const [sheetTaskId, setSheetTaskId] = useState<string>()
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [settingsTab, setSettingsTab] = useState<'general' | 'sync'>('general')
+  const [pendingConnect, setPendingConnect] = useState<ConnectTarget>()
   const [backupMessage, setBackupMessage] = useState('')
   const [isImporting, setIsImporting] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
@@ -131,6 +136,22 @@ function App({ onRefreshApp }: AppProps) {
 
     window.addEventListener('popstate', handlePopState)
     return () => window.removeEventListener('popstate', handlePopState)
+  }, [])
+
+  // An invite link (…/#/connect?server=…&invite=…) opens the Sync tab ready to connect.
+  useEffect(() => {
+    function consumeConnectLink() {
+      if (!window.location.hash.startsWith('#/connect')) return
+      const target = parseConnectInput(window.location.href)
+      window.history.replaceState(window.history.state, '', window.location.pathname + window.location.search)
+      if (!target) return
+      setPendingConnect(target)
+      setSettingsTab('sync')
+      setSettingsOpen(true)
+    }
+    consumeConnectLink()
+    window.addEventListener('hashchange', consumeConnectLink)
+    return () => window.removeEventListener('hashchange', consumeConnectLink)
   }, [])
 
   useEffect(() => {
@@ -634,8 +655,14 @@ function App({ onRefreshApp }: AppProps) {
           <div className="settings-backdrop" role="presentation" onClick={() => setSettingsOpen(false)} />
           <aside className="settings-panel" id="settings-panel" aria-labelledby="settings-title">
             <nav className="settings-tabs" aria-label="Menu sections">
-              <button className="active" type="button"><Settings size={17} />Settings</button>
+              <button className={settingsTab === 'general' ? 'active' : ''} type="button" onClick={() => setSettingsTab('general')}><Settings size={17} />Settings</button>
+              <button className={settingsTab === 'sync' ? 'active' : ''} type="button" onClick={() => setSettingsTab('sync')}><Cloud size={17} />Sync</button>
             </nav>
+            {settingsTab === 'sync' ? (
+              <div className="settings-content">
+                <SyncSettings defaultDisplayName={snapshot.userName} pendingConnect={pendingConnect} />
+              </div>
+            ) : (
             <div className="settings-content">
               <p className="eyebrow">Data management</p>
               <h2 id="settings-title">Settings</h2>
@@ -671,6 +698,7 @@ function App({ onRefreshApp }: AppProps) {
                 )}
               </div>
             </div>
+            )}
           </aside>
         </>
       )}
