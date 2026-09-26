@@ -21,3 +21,4 @@ export type ServerInfo = z.infer<typeof ServerInfo>
 export * from './identity.js'
 export * from './auth.js'
 export * from './invites.js'
+export * from './ops.js'
