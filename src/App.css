@@ -197,6 +197,9 @@ main { --gutter: 24px; flex: 1; min-height: 0; display: flex; flex-direction: co
 .inline-create button:disabled { opacity: .45; }
 .list-toolbar { height: 42px; display: flex; align-items: center; gap: 9px; margin-bottom: 14px; padding: 0 12px; border: 1px solid var(--line); background: var(--panel); color: var(--muted); position: sticky; top: 0; z-index: 4; }
 .list-toolbar input { flex: 1; min-width: 0; border: 0; outline: 0; color: var(--ink); background: transparent; }
+.filter-empty { display: grid; justify-items: start; gap: 10px; margin: -4px 0 14px; padding: 12px; border: 1px dashed var(--blue-200); border-radius: 5px; color: var(--muted); background: var(--blue-50); font-size: 13px; }
+.filter-empty button { max-width: 100%; display: flex; align-items: center; gap: 7px; min-height: 38px; padding: 8px 12px; border: 0; border-radius: 5px; color: white; background: var(--blue-700); font-weight: 700; }
+.filter-empty button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .list-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .list-grid > button { min-height: 76px; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; padding: 14px; text-align: left; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
 .list-grid i { width: 9px; height: 40px; border-radius: 3px; }

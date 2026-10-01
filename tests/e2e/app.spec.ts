@@ -581,6 +581,34 @@ test('orders the week chronologically by day and time, with project rollups on t
   await expect(page.locator('.task-list .task-title', { hasText: /^Order / })).toHaveText(['Order first', 'Order second', 'Order third project', 'Order fourth'])
 })
 
+test('offers to add a filtered-for task that is not in the list or project yet', async ({ page }) => {
+  await page.getByLabel('Planning range').getByRole('button', { name: 'Lists' }).click()
+  await page.locator('.list-grid').getByRole('button', { name: /^Household\b/ }).click()
+  const filter = page.getByRole('textbox', { name: 'Filter this list' })
+
+  await filter.fill('laundry')
+  await expect(page.getByRole('button', { name: 'Do laundry', exact: true })).toBeVisible()
+  await expect(page.locator('.filter-empty')).toHaveCount(0)
+
+  await filter.fill('Clean the gutters')
+  await expect(page.locator('.filter-empty')).toContainText('No tasks in Household match.')
+  await page.getByRole('button', { name: 'Add “Clean the gutters” to Todo' }).click()
+  await expect(filter).toHaveValue('')
+  await expect(page.getByRole('button', { name: 'Clean the gutters', exact: true })).toBeVisible()
+  await expect.poll(() => storedTask(page, 'Clean the gutters').then((task) => [task?.listId, task?.projectId, task?.sectionId])).toEqual(['household', undefined, undefined])
+
+  // Inside a project, the task lands in that project's Todo rather than the list's.
+  await page.getByRole('button', { name: 'New project' }).click()
+  await page.getByRole('textbox', { name: 'Project folder name' }).fill('Garage')
+  await page.getByRole('button', { name: 'Create' }).click()
+  await expect(page.locator('.list-breadcrumbs')).toContainText('Garage')
+  await filter.fill('Sweep the floor')
+  await expect(page.locator('.filter-empty')).toContainText('No tasks in Garage match.')
+  await page.getByRole('button', { name: 'Add “Sweep the floor” to Todo' }).click()
+  await expect(page.getByRole('button', { name: 'Sweep the floor', exact: true })).toBeVisible()
+  await expect.poll(() => storedTask(page, 'Sweep the floor').then((task) => task?.projectId)).toBeTruthy()
+})
+
 test('pins a task to the next named weekday from its subject', async ({ page }) => {
   const now = new Date()
   const target = new Date(now.getFullYear(), now.getMonth(), now.getDate() + ((5 - now.getDay() + 7) % 7 || 7), 12)

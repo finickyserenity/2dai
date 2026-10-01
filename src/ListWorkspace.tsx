@@ -91,6 +91,11 @@ export function ListWorkspace({
     .filter((task) => activeProject ? task.projectId === activeProject.id : !task.projectId)
     .filter((task) => task.title.toLowerCase().includes(search.toLowerCase()))
     .sort((a, b) => a.position - b.position)
+  const searchTerm = search.trim()
+
+  async function addSearchedTask() {
+    if (await addListTask(searchTerm, { listId: activeListId, projectId: activeProject?.id }, activeDay)) setSearch('')
+  }
 
   async function createContainer(event: FormEvent) {
     event.preventDefault()
@@ -201,6 +206,13 @@ export function ListWorkspace({
           <Search size={18} />
           <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Filter this list" aria-label="Filter this list" />
         </div>
+
+        {searchTerm && !scopedTasks.length && (
+          <div className="filter-empty">
+            <span>No tasks in {activeProject?.name ?? activeList.name} match.</span>
+            <button type="button" onClick={addSearchedTask}><Plus size={17} /><span>Add “{searchTerm}” to Todo</span></button>
+          </div>
+        )}
 
         {!activeProject && listProjects.length > 0 && (
           <div className="project-strip">
@@ -430,26 +442,7 @@ function SheetSection({ section, name, tasks, sectionTasks = [], focusedTaskId, 
 
   async function addRow(event: FormEvent) {
     event.preventDefault()
-    const parsed = parseTaskInput(entry, activeDay)
-    if (!parsed.title) return
-    const now = new Date().toISOString()
-    await db.transaction('rw', db.lists, db.projects, db.sections, db.tasks, async () => {
-      if (!await db.lists.get(listId)) return
-      if (projectId && !await db.projects.get(projectId)) return
-      if (sectionId && !await db.sections.get(sectionId)) return
-      const preferredTime = parsed.preferredTime
-      await db.tasks.add({
-        id: createId(), listId, sectionId, projectId, title: parsed.title,
-        ...isWeekend(activeDay)
-          ? { weekendPreferredTime: preferredTime, weekendPreferredTimeSource: preferredTime ? 'explicit' as const : undefined }
-          : { weekdayPreferredTime: preferredTime, weekdayPreferredTimeSource: preferredTime ? 'explicit' as const : undefined },
-        position: Date.now(), effort: 1,
-        intervalDays: parsed.intervalDays, fixedInterval: parsed.fixedInterval,
-        nextDueAt: parsed.dueDate ?? activeDay, scheduledForPlanner: parsed.intervalDays ? undefined : Boolean(parsed.dueDate), archived: false,
-        createdAt: now, updatedAt: now,
-      })
-    })
-    setEntry('')
+    if (await addListTask(entry, { listId, projectId, sectionId }, activeDay)) setEntry('')
   }
 
   async function moveTask(task: Task, offset: -1 | 1) {
@@ -525,6 +518,31 @@ function SheetSection({ section, name, tasks, sectionTasks = [], focusedTaskId, 
       )}
     </section>
   )
+}
+
+// Adds a task typed with the quick-add shorthand ("Call Mom 2:30p 7d!") to a list, project and
+// section, unless one of them was deleted meanwhile. Returns false when there is no title to add.
+async function addListTask(entry: string, { listId, projectId, sectionId }: { listId: string; projectId?: string; sectionId?: string }, activeDay: string): Promise<boolean> {
+  const parsed = parseTaskInput(entry, activeDay)
+  if (!parsed.title) return false
+  const now = new Date().toISOString()
+  await db.transaction('rw', db.lists, db.projects, db.sections, db.tasks, async () => {
+    if (!await db.lists.get(listId)) return
+    if (projectId && !await db.projects.get(projectId)) return
+    if (sectionId && !await db.sections.get(sectionId)) return
+    const preferredTime = parsed.preferredTime
+    await db.tasks.add({
+      id: createId(), listId, sectionId, projectId, title: parsed.title,
+      ...isWeekend(activeDay)
+        ? { weekendPreferredTime: preferredTime, weekendPreferredTimeSource: preferredTime ? 'explicit' as const : undefined }
+        : { weekdayPreferredTime: preferredTime, weekdayPreferredTimeSource: preferredTime ? 'explicit' as const : undefined },
+      position: Date.now(), effort: 1,
+      intervalDays: parsed.intervalDays, fixedInterval: parsed.fixedInterval,
+      nextDueAt: parsed.dueDate ?? activeDay, scheduledForPlanner: parsed.intervalDays ? undefined : Boolean(parsed.dueDate), archived: false,
+      createdAt: now, updatedAt: now,
+    })
+  })
+  return true
 }
 
 function readCollapsedState(key: string): boolean {
