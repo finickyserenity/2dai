@@ -59,6 +59,7 @@ import {
   TITLE_MAX_LENGTH,
   trackedMilliseconds,
   type DelayTarget,
+  type ProjectFolder,
   type Task,
   type TaskAction,
   type TaskEvent,
@@ -67,6 +68,9 @@ import {
 import './App.css'
 
 type PlannerView = 'today' | 'week' | 'month'
+type PlannerItem =
+  | { kind: 'project'; project: ProjectFolder; tasks: Task[]; date: string }
+  | { kind: 'task'; task: Task; date: string }
 type View = PlannerView | 'sheets'
 
 interface AppLocation {
@@ -257,6 +261,11 @@ function App({ onRefreshApp }: AppProps) {
       tasks: tasksForProjectView(snapshot.tasks, project.id, view, activeDate, managedIds),
     }))
     .filter((group) => group.tasks.length > 0)
+  // Rollups lead Today; on Week and Month they sit with the day their first task falls due.
+  const plannerItems: PlannerItem[] = view === 'sheets' ? [] : [
+    ...dueProjects.map(({ project, tasks }) => ({ kind: 'project' as const, project, tasks, date: view === 'today' ? snapshot.activeDay : tasks.map((task) => task.nextDueAt).sort()[0] })),
+    ...visibleTasks.map((task) => ({ kind: 'task' as const, task, date: plannedDate(task, view, snapshot.activeDay, managedIds) })),
+  ].sort((left, right) => left.date.localeCompare(right.date))
   const listById = new Map(snapshot.lists.map((list) => [list.id, list]))
   const effort = visibleTasks.reduce((sum, task) => sum + task.effort, 0)
     + dueProjects.flatMap((group) => group.tasks).reduce((sum, task) => sum + task.effort, 0)
@@ -766,37 +775,44 @@ function App({ onRefreshApp }: AppProps) {
               </div>
 
               <div className="task-list">
-                {dueProjects.map(({ project, tasks }) => {
-                  const list = listById.get(project.listId)
-                  return (
-                    <article className="task-row project-rollup" key={project.id}>
-                      <span className="project-rollup-icon"><FolderKanban size={19} /></span>
-                      <button className="task-copy" type="button" onClick={() => openSheet(project.listId, project.id)}>
-                        <span className="task-title">{project.name}</span>
-                        <span className="task-meta"><i style={{ background: list?.color }} /> {list?.name} · {tasks.length} due inside</span>
-                      </button>
-                      <button className="rollup-open" type="button" onClick={() => openSheet(project.listId, project.id)} aria-label={`Open ${project.name}`}><ChevronRight size={19} /></button>
-                    </article>
-                  )
-                })}
-                {visibleTasks.map((task, index) => {
+                {plannerItems.map((item, index) => {
+                  const groupDate = item.date
+                  const previousGroupDate = plannerItems[index - 1]?.date
+                  const groupKey = view === 'month' ? weekGroupKey(groupDate) : groupDate
+                  const previousGroupKey = previousGroupDate && (view === 'month' ? weekGroupKey(previousGroupDate) : previousGroupDate)
+                  const divider = <>
+                    {view === 'week' && groupDate !== previousGroupDate && <div className="task-day-divider">{formatDayGroup(groupDate, snapshot.activeDay)}</div>}
+                    {view === 'month' && groupKey !== previousGroupKey && <MonthWeekDivider value={groupDate} />}
+                  </>
+                  if (item.kind === 'project') {
+                    const { project, tasks } = item
+                    const list = listById.get(project.listId)
+                    return (
+                      <Fragment key={project.id}>
+                        {divider}
+                        <article className="task-row project-rollup">
+                          <span className="project-rollup-icon"><FolderKanban size={19} /></span>
+                          <button className="task-copy" type="button" onClick={() => openSheet(project.listId, project.id)}>
+                            <span className="task-title">{project.name}</span>
+                            <span className="task-meta"><i style={{ background: list?.color }} /> {list?.name} · {tasks.length} due inside</span>
+                          </button>
+                          <button className="rollup-open" type="button" onClick={() => openSheet(project.listId, project.id)} aria-label={`Open ${project.name}`}><ChevronRight size={19} /></button>
+                        </article>
+                      </Fragment>
+                    )
+                  }
+                  const { task } = item
                   const list = listById.get(task.listId)
                   const managedAction = managedEvents.get(task.id)?.action
                   const isManaged = Boolean(managedAction)
                   const isNotDue = task.nextDueAt > snapshot.activeDay
-                  const preferredTime = preferredTimeFor(task, activeDate)
-                  const groupDate = isManaged ? snapshot.activeDay : task.nextDueAt
-                  const previousTask = visibleTasks[index - 1]
-                  const previousGroupDate = previousTask && managedEvents.has(previousTask.id) ? snapshot.activeDay : previousTask?.nextDueAt
-                  const groupKey = view === 'month' ? weekGroupKey(groupDate) : groupDate
-                  const previousGroupKey = previousGroupDate && (view === 'month' ? weekGroupKey(previousGroupDate) : previousGroupDate)
+                  const preferredTime = preferredTimeFor(task, groupDate)
                   const isRare = (view === 'week' || view === 'month') && (!task.intervalDays || task.intervalDays >= 180)
                   const leavingHeight = leavingRows[task.id]
                   const isChecked = managedAction === 'completed' || leavingHeight !== undefined
                   return (
                     <Fragment key={task.id}>
-                      {view === 'week' && groupDate !== previousGroupDate && <div className="task-day-divider">{formatDayGroup(groupDate, snapshot.activeDay)}</div>}
-                      {view === 'month' && groupKey !== previousGroupKey && <MonthWeekDivider value={groupDate} />}
+                      {divider}
                       <article className={`task-row${isManaged ? ' managed' : ''}${isNotDue ? ' not-due' : ''}${leavingHeight !== undefined ? ' leaving' : ''}`} style={leavingHeight !== undefined ? { '--row-height': `${leavingHeight}px` } as CSSProperties : undefined}>
                         <button className="complete-button" type="button" onClick={(event) => completeTask(task, event.currentTarget.closest('.task-row'))} aria-pressed={isChecked} aria-label={`${isChecked ? 'Uncheck' : 'Complete'} ${task.title}`}><Check size={20} /></button>
                         <TaskRowBody onOpen={() => openTaskOptions(task.id)} onOpenInList={() => openTaskInList(task)} onActions={() => setActionsTaskId(task.id)}>
@@ -1095,9 +1111,19 @@ function tasksForView(tasks: Task[], view: PlannerView, activeDate: Date, manage
       if (managedIds.has(task.id)) return showCompleted
       return task.nextDueAt > start && task.nextDueAt <= end
     })
-    .sort((left, right) => view !== 'today'
-      ? ((view === 'week' || view === 'month') && managedIds.has(left.id) ? start : left.nextDueAt).localeCompare((view === 'week' || view === 'month') && managedIds.has(right.id) ? start : right.nextDueAt) || left.position - right.position
-      : (preferredTimeFor(left, activeDate) ?? '99:99').localeCompare(preferredTimeFor(right, activeDate) ?? '99:99') || left.position - right.position)
+    .sort((left, right) => {
+      const leftDate = plannedDate(left, view, start, managedIds)
+      const rightDate = plannedDate(right, view, start, managedIds)
+      return leftDate.localeCompare(rightDate)
+        || (preferredTimeFor(left, leftDate) ?? '99:99').localeCompare(preferredTimeFor(right, rightDate) ?? '99:99')
+        || left.position - right.position
+    })
+}
+
+// The day a task is listed under: everything on Today shares the active day, and a task already
+// handled today stays with today rather than jumping to its next due date.
+function plannedDate(task: Task, view: PlannerView, activeDay: string, managedIds: Set<string>): string {
+  return view === 'today' || managedIds.has(task.id) ? activeDay : task.nextDueAt
 }
 
 function tasksForProjectView(tasks: Task[], projectId: string, view: PlannerView, activeDate: Date, managedIds: Set<string>): Task[] {

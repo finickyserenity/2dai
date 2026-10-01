@@ -556,6 +556,31 @@ test('adds an entry once when its Add button is tapped without taking focus, as 
   await expect(entry).toBeFocused()
 })
 
+test('orders the week chronologically by day and time, with project rollups on their first due day', async ({ page }) => {
+  const now = new Date()
+  const inDays = (days: number) => { const date = new Date(now.getFullYear(), now.getMonth(), now.getDate() + days, 12); return `${date.getMonth() + 1}/${date.getDate()}` }
+  const entry = page.getByRole('textbox', { name: 'New task' })
+  // Added out of order, so list position alone would get it wrong.
+  for (const title of [`Order fourth ${inDays(4)}`, `Order second ${inDays(2)} 5p`, `Order first ${inDays(2)} 9a`]) {
+    await entry.fill(title)
+    await entry.press('Enter')
+    await expect(entry).toHaveValue('')
+  }
+
+  await page.getByLabel('Planning range').getByRole('button', { name: 'Lists' }).click()
+  await page.locator('.list-grid').getByRole('button', { name: /^Household\b/ }).click()
+  await page.getByRole('button', { name: 'New project' }).click()
+  await page.getByRole('textbox', { name: 'Project folder name' }).fill('Order third project')
+  await page.getByRole('button', { name: 'Create' }).click()
+  await expect(page.locator('.list-breadcrumbs')).toContainText('Order third project')
+  await page.getByRole('textbox', { name: 'Add task to Todo' }).fill(`Project step ${inDays(3)}`)
+  await page.getByRole('textbox', { name: 'Add task to Todo' }).press('Enter')
+  await expect(page.getByRole('button', { name: 'Project step', exact: true })).toBeVisible()
+
+  await page.getByLabel('Planning range').getByRole('button', { name: 'Week' }).click()
+  await expect(page.locator('.task-list .task-title', { hasText: /^Order / })).toHaveText(['Order first', 'Order second', 'Order third project', 'Order fourth'])
+})
+
 test('pins a task to the next named weekday from its subject', async ({ page }) => {
   const now = new Date()
   const target = new Date(now.getFullYear(), now.getMonth(), now.getDate() + ((5 - now.getDay() + 7) % 7 || 7), 12)
