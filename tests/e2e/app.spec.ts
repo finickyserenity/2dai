@@ -91,7 +91,7 @@ test('adds, edits, and completes tasks offline without randomUUID', async ({ pag
   await entry.press('Enter')
   await expect(page.getByText('Offline task', { exact: true })).toBeVisible()
 
-  await page.getByText('Offline task', { exact: true }).click()
+  await page.getByText('Offline task', { exact: true }).dblclick()
   await page.getByRole('button', { name: 'Options for Offline task' }).click()
   await page.getByLabel('Title').fill('Offline task edited')
   await page.getByRole('button', { name: 'Done' }).click()
@@ -231,6 +231,44 @@ test('keeps the view tabs and list breadcrumbs on screen while the content benea
   expect(await top(breadcrumbs)).toBe(breadcrumbsTop)
   await expect(breadcrumbs.getByRole('button', { name: 'Lists' })).toBeInViewport()
   await expect(tabs).toBeInViewport()
+})
+
+test('opens a planner task\'s options on tap and shows it in its list on double tap', async ({ page }) => {
+  // Collapse the section first so the double tap has to open it.
+  await page.getByLabel('Planning range').getByRole('button', { name: 'Lists' }).click()
+  await page.locator('.list-grid').getByRole('button', { name: /^Household\b/ }).click()
+  await page.getByRole('button', { name: 'Collapse Todo' }).click()
+  await expect(page.locator('#task-tidy-living-space')).toHaveCount(0)
+  await page.getByLabel('Planning range').getByRole('button', { name: 'Today' }).click()
+
+  const row = page.locator('.task-copy', { hasText: 'Tidy up' })
+  await row.click()
+  const dialog = page.getByRole('dialog', { name: 'Task options' })
+  await expect(dialog).toBeVisible()
+  await expect(dialog.getByLabel('Title')).toHaveValue('Tidy up')
+  await dialog.getByRole('button', { name: 'Done' }).click()
+  await expect(dialog).toHaveCount(0)
+
+  await row.dblclick()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(page.locator('.list-breadcrumbs')).toContainText('Household')
+  const listed = page.locator('#task-tidy-living-space')
+  await expect(listed).toHaveClass(/focused/)
+  await expect(listed).toBeInViewport()
+  expect(await listed.evaluate((element) => getComputedStyle(element).animationName)).toBe('task-glow')
+
+  // From the options sheet, View list goes back to the same row and replays the glow.
+  await page.getByRole('button', { name: 'Options for Tidy up' }).click()
+  await dialog.getByLabel('Title').fill('Tidy up the den')
+  await dialog.getByRole('button', { name: 'View list' }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(page.locator('#task-tidy-living-space')).toHaveClass(/focused/)
+  await expect(page.getByRole('button', { name: 'Tidy up the den', exact: true })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Options for Tidy up the den' }).click()
+  await dialog.getByRole('button', { name: 'Archive task' }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(page.locator('#task-tidy-living-space')).toHaveCount(0)
 })
 
 async function storedTask(page: Page, title: string) {
@@ -413,7 +451,7 @@ test('edits the title in a growing field and keeps notes on their own tab', asyn
   const entry = page.getByRole('textbox', { name: 'New task' })
   await entry.fill('Notes task')
   await entry.press('Enter')
-  await page.getByText('Notes task', { exact: true }).click()
+  await page.getByText('Notes task', { exact: true }).dblclick()
   await page.getByRole('button', { name: 'Options for Notes task' }).click()
 
   const dialog = page.getByRole('dialog')
@@ -666,7 +704,7 @@ test('offers copy, open-link and call actions from a long press on a task', asyn
   const entry = page.getByRole('textbox', { name: 'New task' })
   await entry.fill('Call the plumber (555) 123-4567')
   await entry.press('Enter')
-  await page.getByText('Call the plumber (555) 123-4567', { exact: true }).click()
+  await page.getByText('Call the plumber (555) 123-4567', { exact: true }).dblclick()
   await page.getByRole('button', { name: 'Options for Call the plumber (555) 123-4567' }).click()
   await page.getByRole('dialog').getByRole('tab', { name: 'Notes' }).click()
   await page.getByRole('dialog').getByRole('textbox', { name: 'Notes' }).fill('Quote at https://example.com/quote/42. Backup +1 555 987 6543')

@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useId, useLayoutEffect, useRef, useState, type ChangeEvent, type ComponentProps, type CSSProperties, type FormEvent, type ReactNode } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
+  Archive,
   CalendarDays,
   Check,
   ChevronRight,
@@ -107,6 +108,7 @@ function App({ onRefreshApp }: AppProps) {
   const [sheetListId, setSheetListId] = useState<string>()
   const [sheetProjectId, setSheetProjectId] = useState<string>()
   const [sheetTaskId, setSheetTaskId] = useState<string>()
+  const [sheetFocusRequest, setSheetFocusRequest] = useState(0)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsTab, setSettingsTab] = useState<'general' | 'sync'>('general')
   const [pendingConnect, setPendingConnect] = useState<ConnectTarget>()
@@ -588,7 +590,15 @@ function App({ onRefreshApp }: AppProps) {
     setSheetListId(task.listId)
     setSheetProjectId(task.projectId)
     setSheetTaskId(task.id)
+    setSheetFocusRequest((request) => request + 1)
     setView('sheets')
+  }
+
+  async function viewSelectedTaskInList() {
+    if (!selectedTask || !taskTitleDraft.trim()) return
+    const task = selectedTask
+    await saveTaskOptions()
+    openTaskInList(task)
   }
 
   function startEditingUserName() {
@@ -717,6 +727,7 @@ function App({ onRefreshApp }: AppProps) {
             initialListId={sheetListId}
             initialProjectId={sheetProjectId}
             focusedTaskId={sheetTaskId}
+            focusRequest={sheetFocusRequest}
             activeDay={snapshot.activeDay}
             managedTaskIds={completedIds}
             onLocationChange={openSheet}
@@ -788,7 +799,7 @@ function App({ onRefreshApp }: AppProps) {
                       {view === 'month' && groupKey !== previousGroupKey && <MonthWeekDivider value={groupDate} />}
                       <article className={`task-row${isManaged ? ' managed' : ''}${isNotDue ? ' not-due' : ''}${leavingHeight !== undefined ? ' leaving' : ''}`} style={leavingHeight !== undefined ? { '--row-height': `${leavingHeight}px` } as CSSProperties : undefined}>
                         <button className="complete-button" type="button" onClick={(event) => completeTask(task, event.currentTarget.closest('.task-row'))} aria-pressed={isChecked} aria-label={`${isChecked ? 'Uncheck' : 'Complete'} ${task.title}`}><Check size={20} /></button>
-                        <TaskRowBody onOpen={() => openTaskInList(task)} onActions={() => setActionsTaskId(task.id)}>
+                        <TaskRowBody onOpen={() => openTaskOptions(task.id)} onOpenInList={() => openTaskInList(task)} onActions={() => setActionsTaskId(task.id)}>
                           <span className={`task-title${isRare ? ' rare' : ''}`}>{isRare && <Star className="task-title-star" size={15} fill="currentColor" aria-hidden="true" />}{task.title}</span>
                           <span className="task-meta">
                             <i style={{ background: list?.color }} /> {list?.name ?? 'Unsorted'}
@@ -914,7 +925,10 @@ function App({ onRefreshApp }: AppProps) {
             <label className="toggle-row"><span><strong>Fixed schedule</strong><small>Repeat from the scheduled date, not completion</small></span><input type="checkbox" checked={selectedTask.fixedInterval} onChange={(event) => updateTask({ fixedInterval: event.target.checked })} /></label>
             </div>
             </div>
-            <button className="archive-button" type="button" onClick={async () => { await updateTask({ archived: true }); closeTaskOptions() }}>Archive task</button>
+            <div className="sheet-footer-actions">
+              <button type="button" disabled={!taskTitleDraft.trim()} onClick={viewSelectedTaskInList}><LibraryBig size={17} />View list</button>
+              <button className="danger-button" type="button" onClick={async () => { await updateTask({ archived: true }); closeTaskOptions() }}><Archive size={17} />Archive task</button>
+            </div>
           </section>
         </div>
       )}
@@ -980,9 +994,10 @@ function DelayButton({ title, onDelay, onOpenMenu }: { title: string; onDelay: (
   )
 }
 
-// Row body for a planner task: tap opens it in its list, holding opens the actions menu.
-function TaskRowBody({ onOpen, onActions, children }: { onOpen: () => void; onActions: () => void; children: ReactNode }) {
-  const press = useLongPress(onActions, onOpen)
+// Row body for a planner task: tap opens its options, double tap shows it in its list, holding
+// opens the actions menu.
+function TaskRowBody({ onOpen, onOpenInList, onActions, children }: { onOpen: () => void; onOpenInList: () => void; onActions: () => void; children: ReactNode }) {
+  const press = useLongPress(onActions, onOpen, onOpenInList)
   return <button className="task-copy" type="button" aria-haspopup="dialog" {...press}>{children}</button>
 }
 

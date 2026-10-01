@@ -30,6 +30,8 @@ interface ListWorkspaceProps {
   initialListId?: string
   initialProjectId?: string
   focusedTaskId?: string
+  // Bumped each time the focused task is asked for again, so it is revealed and highlighted anew.
+  focusRequest?: number
   activeDay: string
   managedTaskIds: Set<string>
   onLocationChange: (listId?: string, projectId?: string) => void
@@ -47,6 +49,7 @@ export function ListWorkspace({
   initialListId,
   initialProjectId,
   focusedTaskId,
+  focusRequest = 0,
   activeDay,
   managedTaskIds,
   onLocationChange,
@@ -67,7 +70,7 @@ export function ListWorkspace({
       document.getElementById(`task-${focusedTaskId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
     })
     return () => cancelAnimationFrame(frame)
-  }, [focusedTaskId, initialListId, initialProjectId])
+  }, [focusedTaskId, focusRequest, initialListId, initialProjectId])
 
   if (!activeList) {
     return <ListIndex lists={lists} sections={sections} tasks={tasks} projects={projects} onOpen={onLocationChange} onOpenTask={onOpenTask} />
@@ -219,6 +222,7 @@ export function ListWorkspace({
           name="Todo"
           tasks={scopedTasks.filter((task) => !task.sectionId || !listSections.some((section) => section.id === task.sectionId))}
           focusedTaskId={focusedTaskId}
+          focusRequest={focusRequest}
           listId={activeList.id}
           projectId={activeProject?.id}
           activeDay={activeDay}
@@ -235,6 +239,7 @@ export function ListWorkspace({
             tasks={scopedTasks.filter((task) => task.sectionId === section.id)}
             sectionTasks={tasks.filter((task) => task.listId === activeList.id && task.projectId === activeProject?.id && task.sectionId === section.id)}
             focusedTaskId={focusedTaskId}
+            focusRequest={focusRequest}
             listId={activeList.id}
             sectionId={section.id}
             projectId={activeProject?.id}
@@ -362,6 +367,7 @@ interface SheetSectionProps {
   tasks: Task[]
   sectionTasks?: Task[]
   focusedTaskId?: string
+  focusRequest: number
   listId: string
   sectionId?: string
   projectId?: string
@@ -375,10 +381,17 @@ interface SheetSectionProps {
   canMoveSectionDown?: boolean
 }
 
-function SheetSection({ section, name, tasks, sectionTasks = [], focusedTaskId, listId, sectionId, projectId, activeDay, managedTaskIds, onManage, onEdit, onActions, onMoveSection, canMoveSectionUp, canMoveSectionDown }: SheetSectionProps) {
+function SheetSection({ section, name, tasks, sectionTasks = [], focusedTaskId, focusRequest, listId, sectionId, projectId, activeDay, managedTaskIds, onManage, onEdit, onActions, onMoveSection, canMoveSectionUp, canMoveSectionDown }: SheetSectionProps) {
   const [entry, setEntry] = useState('')
   const collapseStorageKey = `2dai:section-collapsed:${listId}:${projectId ?? 'root'}:${sectionId ?? 'todo'}`
-  const [collapsed, setCollapsed] = useState(() => readCollapsedState(collapseStorageKey))
+  const holdsFocusedTask = Boolean(focusedTaskId) && tasks.some((task) => task.id === focusedTaskId)
+  // A section opens to reveal a task the user asked to see, both on arrival and on a repeat request.
+  const [collapsed, setCollapsed] = useState(() => readCollapsedState(collapseStorageKey) && !holdsFocusedTask)
+  const [seenFocusRequest, setSeenFocusRequest] = useState(focusRequest)
+  if (focusRequest !== seenFocusRequest) {
+    setSeenFocusRequest(focusRequest)
+    if (holdsFocusedTask) setCollapsed(false)
+  }
   const [renaming, setRenaming] = useState(false)
   const [sectionName, setSectionName] = useState(name)
   const canDelete = sectionTasks.every((task) => task.archived)
@@ -488,7 +501,7 @@ function SheetSection({ section, name, tasks, sectionTasks = [], focusedTaskId, 
             const isNotDue = task.nextDueAt > activeDay
             const isUnscheduled = !task.intervalDays && task.scheduledForPlanner !== true
             return (
-            <div id={`task-${task.id}`} className={`raw-task-row${isManaged ? ' managed' : ''}${isNotDue ? ' not-due' : ''}${focusedTaskId === task.id ? ' focused' : ''}`} key={task.id}>
+            <div id={`task-${task.id}`} className={`raw-task-row${isManaged ? ' managed' : ''}${isNotDue ? ' not-due' : ''}${focusedTaskId === task.id ? ' focused' : ''}`} key={focusedTaskId === task.id ? `${task.id}:${focusRequest}` : task.id}>
               {isUnscheduled
                 ? <button className="raw-check raw-schedule" type="button" onClick={() => scheduleTask(task)} aria-label={`Add ${task.title} to Today`} title="Add to Today"><Plus size={16} /></button>
                 : <button className="raw-check" type="button" onClick={() => onManage(task, 'completed')} aria-pressed={isManaged} aria-label={`${isManaged ? 'Uncheck' : 'Complete'} ${task.title}`}><Check size={16} /></button>}

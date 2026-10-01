@@ -89,6 +89,7 @@ main { --gutter: 24px; flex: 1; min-height: 0; display: flex; flex-direction: co
 .task-actions button { width: 37px; height: 37px; display: grid; place-items: center; border: 0; border-radius: 5px; color: var(--blue-600); background: transparent; }
 .task-actions button[aria-pressed='true'] { color: white; background: var(--blue-600); }
 .delay-button, .task-copy, .raw-task-name { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+.task-copy { touch-action: manipulation; } /* a double tap opens the task in its list rather than zooming */
 .task-actions .effort-badge span { min-width: 24px; height: 24px; box-sizing: border-box; display: grid; place-items: center; padding: 0 6px; border: 2px solid var(--line-strong); border-radius: 12px; color: var(--muted); background: var(--panel); font: 700 12px/1 var(--body); font-variant-numeric: tabular-nums; }
 .task-actions .effort-badge.running span { border-color: var(--blue-600); color: white; background: var(--blue-600); animation: effort-pulse 2s ease-in-out infinite; }
 @keyframes effort-pulse { 50% { box-shadow: 0 0 0 4px var(--pulse); } }
@@ -147,7 +148,10 @@ main { --gutter: 24px; flex: 1; min-height: 0; display: flex; flex-direction: co
 .tracking-note { margin: 16px 0; color: var(--muted); font-size: 13px; }
 .tracking-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .tracking-actions button { justify-content: center; }
-.archive-button { margin-top: 18px; padding: 9px 0; border: 0; color: var(--danger); background: transparent; font-weight: 700; }
+.sheet-footer-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 18px; }
+.sheet-footer-actions button { min-height: 42px; display: flex; align-items: center; justify-content: center; gap: 7px; padding: 8px 12px; border: 1px solid var(--blue-200); border-radius: 5px; color: var(--blue-700); background: var(--panel); font-weight: 700; }
+.sheet-footer-actions button:disabled { opacity: .45; cursor: default; }
+.sheet-footer-actions .danger-button { color: var(--danger); border-color: var(--danger-line); }
 .lists-main { padding-top: 18px; }
 .list-workspace, .list-index { min-width: 0; }
 .list-workspace { flex: 1; min-height: 0; display: flex; flex-direction: column; }
@@ -219,7 +223,12 @@ main { --gutter: 24px; flex: 1; min-height: 0; display: flex; flex-direction: co
 .raw-table-heading { min-height: 27px; color: var(--muted); background: var(--panel-faint); font-size: 10px; font-weight: 700; text-transform: uppercase; }
 .raw-table-heading span { padding: 0 8px; }
 .raw-task-row { min-height: 42px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
-.raw-task-row.focused { background: var(--blue-50); box-shadow: inset 3px 0 var(--blue-600); }
+.raw-task-row.focused { position: relative; z-index: 1; background: var(--blue-50); box-shadow: inset 3px 0 var(--blue-600); animation: task-glow 1.2s ease-out 250ms backwards; }
+/* Flashes once around a task the user jumped to (remounted per request so it replays), after the scroll settles. */
+@keyframes task-glow {
+  0% { background: var(--panel); box-shadow: inset 3px 0 var(--blue-600), 0 0 0 0 transparent, 0 0 0 0 transparent; }
+  25% { background: var(--blue-100); box-shadow: inset 3px 0 var(--blue-600), 0 0 0 2px var(--blue-500), 0 0 18px 5px var(--blue-400); }
+}
 .raw-task-row > * { min-width: 0; }
 .raw-check { width: 23px; height: 23px; display: grid; place-items: center; margin-left: 10px; padding: 0; border: 1.5px solid var(--blue-400); border-radius: 4px; color: transparent; background: var(--panel); line-height: 0; }
 .raw-check svg { display: block; }
@@ -304,7 +313,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
   .option-grid .effort-field { gap: 10px; }
   .option-grid input[type="date"], .option-grid input[type="time"], .theme-settings input[type="time"] { min-height: 41px; -webkit-appearance: none; appearance: none; text-align: left; }
   .toggle-row { margin-top: 14px; padding: 10px 0; }
-  .archive-button { margin-top: 10px; }
+  .sheet-footer-actions { margin-top: 12px; }
   .lists-main { --gutter: 10px; }
   .list-titlebar { align-items: start; }
   .list-titlebar h2 { font-size: 25px; }
