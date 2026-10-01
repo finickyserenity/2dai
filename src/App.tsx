@@ -263,8 +263,6 @@ function App({ onRefreshApp }: AppProps) {
   const trackingTask = snapshot.tasks.find((task) => task.id === trackingTaskId && isTracking(task))
   const actionsTask = snapshot.tasks.find((task) => task.id === actionsTaskId)
 
-  const isSheetOpen = Boolean(selectedTask || delayMenuTask || trackingTask || actionsTask)
-
   useEffect(() => {
     if (!toast) return
     const timer = setTimeout(() => setToast(''), 2_200)
@@ -280,20 +278,6 @@ function App({ onRefreshApp }: AppProps) {
       setToast('Could not copy on this device')
     }
   }
-  useLayoutEffect(() => {
-    if (!isSheetOpen) return
-    // Keep the list behind a sheet from scrolling. Where the scrollbar takes up room, pad by its
-    // width so hiding it does not shift the page sideways.
-    const root = document.documentElement
-    const scrollbarWidth = window.innerWidth - root.clientWidth
-    root.style.overflow = 'hidden'
-    if (scrollbarWidth > 0) root.style.paddingRight = `${scrollbarWidth}px`
-    return () => {
-      root.style.overflow = ''
-      root.style.paddingRight = ''
-    }
-  }, [isSheetOpen])
-
   async function addTask(event: FormEvent) {
     event.preventDefault()
     const parsed = parseTaskInput(entry, snapshot.activeDay)
@@ -724,7 +708,7 @@ function App({ onRefreshApp }: AppProps) {
           ))}
         </nav>
 
-        {view === 'sheets' && (
+        {view === 'sheets' ? (
           <ListWorkspace
             lists={snapshot.lists}
             sections={snapshot.sections}
@@ -741,95 +725,97 @@ function App({ onRefreshApp }: AppProps) {
             onEdit={openTaskOptions}
             onActions={setActionsTaskId}
           />
-        )}
-
-        {view === 'today' && (
-          <form className="quick-add" onSubmit={addTask}>
-            <Plus size={21} aria-hidden="true" />
-            <input value={entry} maxLength={TITLE_MAX_LENGTH} onChange={(event) => setEntry(event.target.value)} onBlur={submitOnLeave} placeholder="Add a task, try ‘Call Mom 2:30p 7d!’" aria-label="New task" />
-            <select value={entryListId} onChange={(event) => setEntryListId(event.target.value)} aria-label="Task list">
-              {snapshot.lists.map((list) => <option key={list.id} value={list.id}>{list.name}</option>)}
-            </select>
-            <button type="submit" disabled={!entry.trim()} onMouseDown={keepEntryFocus}>Add</button>
-          </form>
-        )}
-
-        {isNewDayAvailable && view === 'today' && (
-          <button className="new-day" type="button" onClick={startNewDay}>
-            <span className="new-day-icon"><RotateCcw size={19} /></span>
-            <span><strong>Start new day</strong><small>{formatFriendlyDate(new Date(`${today}T12:00:00`))}</small></span>
-            <ChevronRight size={20} />
-          </button>
-        )}
-
-        {view !== 'sheets' && <section className="task-section" aria-live="polite">
-          <div className="section-label">
-            <span>{view === 'today' ? `${visibleTasks.length + dueProjects.length} items` : 'Upcoming'}</span>
-            {(view === 'today' || view === 'week' || view === 'month') && (
-              <label><input type="checkbox" checked={showCompleted} onChange={(event) => setShowCompleted(event.target.checked)} /> Show managed</label>
+        ) : (
+          <div className="view-scroll">
+            {view === 'today' && (
+              <form className="quick-add" onSubmit={addTask}>
+                <Plus size={21} aria-hidden="true" />
+                <input value={entry} maxLength={TITLE_MAX_LENGTH} onChange={(event) => setEntry(event.target.value)} onBlur={submitOnLeave} placeholder="Add a task, try ‘Call Mom 2:30p 7d!’" aria-label="New task" />
+                <select value={entryListId} onChange={(event) => setEntryListId(event.target.value)} aria-label="Task list">
+                  {snapshot.lists.map((list) => <option key={list.id} value={list.id}>{list.name}</option>)}
+                </select>
+                <button type="submit" disabled={!entry.trim()} onMouseDown={keepEntryFocus}>Add</button>
+              </form>
             )}
-          </div>
 
-          <div className="task-list">
-            {dueProjects.map(({ project, tasks }) => {
-              const list = listById.get(project.listId)
-              return (
-                <article className="task-row project-rollup" key={project.id}>
-                  <span className="project-rollup-icon"><FolderKanban size={19} /></span>
-                  <button className="task-copy" type="button" onClick={() => openSheet(project.listId, project.id)}>
-                    <span className="task-title">{project.name}</span>
-                    <span className="task-meta"><i style={{ background: list?.color }} /> {list?.name} · {tasks.length} due inside</span>
-                  </button>
-                  <button className="rollup-open" type="button" onClick={() => openSheet(project.listId, project.id)} aria-label={`Open ${project.name}`}><ChevronRight size={19} /></button>
-                </article>
-              )
-            })}
-            {visibleTasks.map((task, index) => {
-              const list = listById.get(task.listId)
-              const managedAction = managedEvents.get(task.id)?.action
-              const isManaged = Boolean(managedAction)
-              const isNotDue = task.nextDueAt > snapshot.activeDay
-              const preferredTime = preferredTimeFor(task, activeDate)
-              const groupDate = isManaged ? snapshot.activeDay : task.nextDueAt
-              const previousTask = visibleTasks[index - 1]
-              const previousGroupDate = previousTask && managedEvents.has(previousTask.id) ? snapshot.activeDay : previousTask?.nextDueAt
-              const groupKey = view === 'month' ? weekGroupKey(groupDate) : groupDate
-              const previousGroupKey = previousGroupDate && (view === 'month' ? weekGroupKey(previousGroupDate) : previousGroupDate)
-              const isRare = (view === 'week' || view === 'month') && (!task.intervalDays || task.intervalDays >= 180)
-              const leavingHeight = leavingRows[task.id]
-              const isChecked = managedAction === 'completed' || leavingHeight !== undefined
-              return (
-                <Fragment key={task.id}>
-                  {view === 'week' && groupDate !== previousGroupDate && <div className="task-day-divider">{formatDayGroup(groupDate, snapshot.activeDay)}</div>}
-                  {view === 'month' && groupKey !== previousGroupKey && <MonthWeekDivider value={groupDate} />}
-                  <article className={`task-row${isManaged ? ' managed' : ''}${isNotDue ? ' not-due' : ''}${leavingHeight !== undefined ? ' leaving' : ''}`} style={leavingHeight !== undefined ? { '--row-height': `${leavingHeight}px` } as CSSProperties : undefined}>
-                    <button className="complete-button" type="button" onClick={(event) => completeTask(task, event.currentTarget.closest('.task-row'))} aria-pressed={isChecked} aria-label={`${isChecked ? 'Uncheck' : 'Complete'} ${task.title}`}><Check size={20} /></button>
-                    <TaskRowBody onOpen={() => openTaskInList(task)} onActions={() => setActionsTaskId(task.id)}>
-                      <span className={`task-title${isRare ? ' rare' : ''}`}>{isRare && <Star className="task-title-star" size={15} fill="currentColor" aria-hidden="true" />}{task.title}</span>
-                      <span className="task-meta">
-                        <i style={{ background: list?.color }} /> {list?.name ?? 'Unsorted'}
-                        {preferredTime && <><Clock3 size={13} /> {formatTime(preferredTime)}</>}
-                        {view !== 'today' && <span className="task-due">Due {formatFriendlyDate(new Date(`${task.nextDueAt}T12:00:00`))}</span>}
-                      </span>
-                    </TaskRowBody>
-                    <div className="task-actions">
-                      {!isManaged && <DelayButton title={task.title} onDelay={() => manageTask(task, 'delayed')} onOpenMenu={() => setDelayMenuTaskId(task.id)} />}
-                      {managedAction === 'delayed' && <button type="button" onClick={() => manageTask(task, 'delayed')} title="Undo delay" aria-pressed="true" aria-label={`Undo delay for ${task.title}`}><Clock3 size={18} /></button>}
-                      {managedAction === 'skipped' && <button type="button" onClick={() => manageTask(task, 'skipped')} title="Undo skip" aria-pressed="true" aria-label={`Undo skip for ${task.title}`}><SkipForward size={18} /></button>}
-                      {!isManaged && (isTracking(task)
-                        ? <EffortBadge task={task} onOpen={() => setTrackingTaskId(task.id)} />
-                        : <button type="button" onClick={() => updateTracking(task, 'start')} title="Track effort" aria-label={`Track effort for ${task.title}`}><Play size={18} /></button>)}
-                      <button type="button" onClick={() => openTaskOptions(task.id)} title="Task options" aria-label={`Options for ${task.title}`}><MoreHorizontal size={19} /></button>
-                    </div>
-                  </article>
-                </Fragment>
-              )
-            })}
-            {!visibleTasks.length && !dueProjects.length && (
-              <div className="empty-state"><Check size={26} /><strong>Nothing waiting here</strong><span>{view === 'today' ? 'Add a task or take the win.' : view === 'week' ? 'No weekly or one-time tasks are due in this range.' : 'No monthly or one-time tasks are due in this range.'}</span></div>
+            {isNewDayAvailable && view === 'today' && (
+              <button className="new-day" type="button" onClick={startNewDay}>
+                <span className="new-day-icon"><RotateCcw size={19} /></span>
+                <span><strong>Start new day</strong><small>{formatFriendlyDate(new Date(`${today}T12:00:00`))}</small></span>
+                <ChevronRight size={20} />
+              </button>
             )}
+
+            <section className="task-section" aria-live="polite">
+              <div className="section-label">
+                <span>{view === 'today' ? `${visibleTasks.length + dueProjects.length} items` : 'Upcoming'}</span>
+                {(view === 'today' || view === 'week' || view === 'month') && (
+                  <label><input type="checkbox" checked={showCompleted} onChange={(event) => setShowCompleted(event.target.checked)} /> Show managed</label>
+                )}
+              </div>
+
+              <div className="task-list">
+                {dueProjects.map(({ project, tasks }) => {
+                  const list = listById.get(project.listId)
+                  return (
+                    <article className="task-row project-rollup" key={project.id}>
+                      <span className="project-rollup-icon"><FolderKanban size={19} /></span>
+                      <button className="task-copy" type="button" onClick={() => openSheet(project.listId, project.id)}>
+                        <span className="task-title">{project.name}</span>
+                        <span className="task-meta"><i style={{ background: list?.color }} /> {list?.name} · {tasks.length} due inside</span>
+                      </button>
+                      <button className="rollup-open" type="button" onClick={() => openSheet(project.listId, project.id)} aria-label={`Open ${project.name}`}><ChevronRight size={19} /></button>
+                    </article>
+                  )
+                })}
+                {visibleTasks.map((task, index) => {
+                  const list = listById.get(task.listId)
+                  const managedAction = managedEvents.get(task.id)?.action
+                  const isManaged = Boolean(managedAction)
+                  const isNotDue = task.nextDueAt > snapshot.activeDay
+                  const preferredTime = preferredTimeFor(task, activeDate)
+                  const groupDate = isManaged ? snapshot.activeDay : task.nextDueAt
+                  const previousTask = visibleTasks[index - 1]
+                  const previousGroupDate = previousTask && managedEvents.has(previousTask.id) ? snapshot.activeDay : previousTask?.nextDueAt
+                  const groupKey = view === 'month' ? weekGroupKey(groupDate) : groupDate
+                  const previousGroupKey = previousGroupDate && (view === 'month' ? weekGroupKey(previousGroupDate) : previousGroupDate)
+                  const isRare = (view === 'week' || view === 'month') && (!task.intervalDays || task.intervalDays >= 180)
+                  const leavingHeight = leavingRows[task.id]
+                  const isChecked = managedAction === 'completed' || leavingHeight !== undefined
+                  return (
+                    <Fragment key={task.id}>
+                      {view === 'week' && groupDate !== previousGroupDate && <div className="task-day-divider">{formatDayGroup(groupDate, snapshot.activeDay)}</div>}
+                      {view === 'month' && groupKey !== previousGroupKey && <MonthWeekDivider value={groupDate} />}
+                      <article className={`task-row${isManaged ? ' managed' : ''}${isNotDue ? ' not-due' : ''}${leavingHeight !== undefined ? ' leaving' : ''}`} style={leavingHeight !== undefined ? { '--row-height': `${leavingHeight}px` } as CSSProperties : undefined}>
+                        <button className="complete-button" type="button" onClick={(event) => completeTask(task, event.currentTarget.closest('.task-row'))} aria-pressed={isChecked} aria-label={`${isChecked ? 'Uncheck' : 'Complete'} ${task.title}`}><Check size={20} /></button>
+                        <TaskRowBody onOpen={() => openTaskInList(task)} onActions={() => setActionsTaskId(task.id)}>
+                          <span className={`task-title${isRare ? ' rare' : ''}`}>{isRare && <Star className="task-title-star" size={15} fill="currentColor" aria-hidden="true" />}{task.title}</span>
+                          <span className="task-meta">
+                            <i style={{ background: list?.color }} /> {list?.name ?? 'Unsorted'}
+                            {preferredTime && <><Clock3 size={13} /> {formatTime(preferredTime)}</>}
+                            {view !== 'today' && <span className="task-due">Due {formatFriendlyDate(new Date(`${task.nextDueAt}T12:00:00`))}</span>}
+                          </span>
+                        </TaskRowBody>
+                        <div className="task-actions">
+                          {!isManaged && <DelayButton title={task.title} onDelay={() => manageTask(task, 'delayed')} onOpenMenu={() => setDelayMenuTaskId(task.id)} />}
+                          {managedAction === 'delayed' && <button type="button" onClick={() => manageTask(task, 'delayed')} title="Undo delay" aria-pressed="true" aria-label={`Undo delay for ${task.title}`}><Clock3 size={18} /></button>}
+                          {managedAction === 'skipped' && <button type="button" onClick={() => manageTask(task, 'skipped')} title="Undo skip" aria-pressed="true" aria-label={`Undo skip for ${task.title}`}><SkipForward size={18} /></button>}
+                          {!isManaged && (isTracking(task)
+                            ? <EffortBadge task={task} onOpen={() => setTrackingTaskId(task.id)} />
+                            : <button type="button" onClick={() => updateTracking(task, 'start')} title="Track effort" aria-label={`Track effort for ${task.title}`}><Play size={18} /></button>)}
+                          <button type="button" onClick={() => openTaskOptions(task.id)} title="Task options" aria-label={`Options for ${task.title}`}><MoreHorizontal size={19} /></button>
+                        </div>
+                      </article>
+                    </Fragment>
+                  )
+                })}
+                {!visibleTasks.length && !dueProjects.length && (
+                  <div className="empty-state"><Check size={26} /><strong>Nothing waiting here</strong><span>{view === 'today' ? 'Add a task or take the win.' : view === 'week' ? 'No weekly or one-time tasks are due in this range.' : 'No monthly or one-time tasks are due in this range.'}</span></div>
+                )}
+              </div>
+            </section>
           </div>
-        </section>}
+        )}
       </main>
 
       {toast && <div className="toast" role="status">{toast}</div>}

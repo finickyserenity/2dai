@@ -34,3 +34,5 @@ server
 
 # local TLS for LAN testing
 certs/
+
+todo.md

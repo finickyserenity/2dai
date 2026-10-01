@@ -1,5 +1,5 @@
-.app-shell { width: min(100%, 860px); min-height: 100svh; margin: 0 auto; background: var(--surface); border-inline: 1px solid var(--line); }
-.topbar { height: calc(72px + var(--top-inset)); display: flex; align-items: center; gap: 12px; padding: 0 24px; padding-top: var(--top-inset); border-bottom: 1px solid var(--line); background: var(--topbar); position: sticky; top: 0; z-index: 10; backdrop-filter: blur(12px); }
+.app-shell { position: fixed; top: var(--app-top, 0px); left: 0; right: 0; width: min(100%, 860px); height: var(--app-height, 100dvh); margin: 0 auto; display: flex; flex-direction: column; background: var(--surface); border-inline: 1px solid var(--line); } /* sized to the visible area by fitAppToVisualViewport */
+.topbar { flex: none; height: calc(72px + var(--top-inset)); display: flex; align-items: center; gap: 12px; padding: 0 24px; padding-top: var(--top-inset); border-bottom: 1px solid var(--line); background: var(--topbar); position: sticky; top: 0; z-index: 10; backdrop-filter: blur(12px); }
 .brand-mark { display: grid; place-items: center; width: 44px; height: 38px; color: white; background: var(--blue-700); font: 700 12px var(--display); border-radius: 6px; }
 .topbar h1 { margin: 0; font: 700 20px var(--display); color: var(--ink); }
 .topbar h1 button { max-width: min(55vw, 520px); overflow: hidden; padding: 0; border: 0; color: inherit; background: transparent; font: inherit; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
@@ -30,13 +30,15 @@
 .theme-settings label:first-child { grid-column: 1 / -1; }
 .theme-settings input, .theme-settings select { width: 100%; min-width: 0; padding: 10px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel); color: var(--ink); font: 500 14px/1.45 var(--body); }
 .backup-message { margin: 14px 0 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 5px; color: var(--ink); background: var(--panel); font-size: 13px; }
-main { padding: 28px 24px 56px; }
-.day-heading { display: flex; align-items: end; justify-content: space-between; margin-bottom: 20px; }
+main { --gutter: 24px; flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 28px var(--gutter) 0; }
+/* Everything below the view tabs (and a list's breadcrumbs) scrolls here, so they stay on screen while the keyboard is up. */
+.view-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; margin-inline: calc(-1 * var(--gutter)); padding: 18px var(--gutter) calc(56px + env(safe-area-inset-bottom)); }
+.day-heading { flex: none; display: flex; align-items: end; justify-content: space-between; margin-bottom: 20px; }
 .day-heading h2 { margin: 2px 0 0; font: 700 34px/1 var(--display); color: var(--ink); }
 .date-label { margin: 0; color: var(--blue-700); font-size: 13px; font-weight: 700; }
 .effort-meter { display: flex; align-items: center; gap: 10px; padding: 7px 8px 7px 12px; border: 1px solid var(--line); border-radius: 6px; color: var(--muted); font-size: 12px; font-weight: 700; background: var(--panel); }
 .effort-meter strong { min-width: 28px; padding: 3px 7px; text-align: center; color: var(--blue-800); background: var(--blue-100); border-radius: 4px; font-size: 14px; }
-.view-tabs { display: grid; grid-template-columns: repeat(4, 1fr); border-bottom: 1px solid var(--line); margin-bottom: 18px; }
+.view-tabs { flex: none; display: grid; grid-template-columns: repeat(4, 1fr); border-bottom: 1px solid var(--line); }
 .view-tabs button { display: flex; justify-content: center; align-items: center; gap: 7px; height: 42px; border: 0; border-bottom: 3px solid transparent; color: var(--muted); background: transparent; font-weight: 700; }
 .view-tabs button.active { color: var(--blue-700); border-bottom-color: var(--blue-600); }
 .quick-add { display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 10px; min-height: 54px; padding: 0 8px 0 16px; margin-bottom: 14px; border: 1px solid var(--blue-200); border-radius: 7px; background: var(--panel); box-shadow: 0 5px 18px var(--shadow-soft); color: var(--blue-600); }
@@ -148,7 +150,8 @@ main { padding: 28px 24px 56px; }
 .archive-button { margin-top: 18px; padding: 9px 0; border: 0; color: var(--danger); background: transparent; font-weight: 700; }
 .lists-main { padding-top: 18px; }
 .list-workspace, .list-index { min-width: 0; }
-.list-breadcrumbs { display: flex; align-items: center; gap: 5px; margin-bottom: 17px; color: var(--muted); font-size: 12px; }
+.list-workspace { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.list-breadcrumbs { flex: none; display: flex; align-items: center; gap: 5px; padding: 6px 0; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 12px; }
 .list-breadcrumbs button { display: flex; align-items: center; gap: 5px; padding: 4px; border: 0; color: var(--blue-700); background: transparent; font-weight: 700; }
 .list-breadcrumbs strong { overflow: hidden; color: var(--ink); text-overflow: ellipsis; white-space: nowrap; }
 .list-titlebar { display: flex; align-items: end; justify-content: space-between; gap: 18px; margin-bottom: 20px; }
@@ -188,7 +191,7 @@ main { padding: 28px 24px 56px; }
 .inline-create button { padding: 7px 10px; border: 0; border-radius: 4px; color: var(--blue-700); background: var(--panel); font-size: 12px; font-weight: 700; }
 .inline-create button[type='submit'] { color: white; background: var(--blue-700); }
 .inline-create button:disabled { opacity: .45; }
-.list-toolbar { height: 42px; display: flex; align-items: center; gap: 9px; margin-bottom: 14px; padding: 0 12px; border: 1px solid var(--line); background: var(--panel); color: var(--muted); position: sticky; top: 80px; z-index: 4; }
+.list-toolbar { height: 42px; display: flex; align-items: center; gap: 9px; margin-bottom: 14px; padding: 0 12px; border: 1px solid var(--line); background: var(--panel); color: var(--muted); position: sticky; top: 0; z-index: 4; }
 .list-toolbar input { flex: 1; min-width: 0; border: 0; outline: 0; color: var(--ink); background: transparent; }
 .list-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .list-grid > button { min-height: 76px; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; padding: 14px; text-align: left; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
@@ -281,7 +284,8 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
   .settings-panel { top: calc(62px + var(--top-inset)); right: 0; }
   .settings-tabs { padding-inline: 16px; }
   .settings-content { padding: 24px 16px; }
-  main { padding: 22px 14px 40px; }
+  main { --gutter: 14px; padding-top: 22px; }
+  .view-scroll { padding-bottom: calc(40px + env(safe-area-inset-bottom)); }
   .day-heading h2 { font-size: 30px; }
   .quick-add { grid-template-columns: 21px minmax(0, 1fr) auto; grid-template-rows: 30px 28px; column-gap: 8px; row-gap: 0; min-height: 68px; padding: 5px 7px 5px 12px; }
   .quick-add > svg { grid-column: 1; grid-row: 1; align-self: center; justify-self: center; }
@@ -301,7 +305,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
   .option-grid input[type="date"], .option-grid input[type="time"], .theme-settings input[type="time"] { min-height: 41px; -webkit-appearance: none; appearance: none; text-align: left; }
   .toggle-row { margin-top: 14px; padding: 10px 0; }
   .archive-button { margin-top: 10px; }
-  .lists-main { padding-inline: 10px; }
+  .lists-main { --gutter: 10px; }
   .list-titlebar { align-items: start; }
   .list-titlebar h2 { font-size: 25px; }
   .list-title-actions { flex-direction: column; }
@@ -315,7 +319,6 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
   .inline-create { grid-template-columns: auto minmax(0, 1fr) auto; }
   .inline-create button:last-child { grid-column: 2 / 4; padding: 4px; background: transparent; }
   .list-grid, .project-strip { grid-template-columns: 1fr; }
-  .list-toolbar { top: 70px; }
   .raw-table-heading, .raw-task-row { grid-template-columns: 42px minmax(0, 1fr) 38px; }
   .raw-table-heading span:nth-child(3), .raw-table-heading span:nth-child(4), .raw-task-row > span { display: none; }
   .raw-row-actions button:not(:last-child) { display: none; }

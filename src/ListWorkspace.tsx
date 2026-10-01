@@ -169,84 +169,86 @@ export function ListWorkspace({
         {activeProject && <><ChevronRight size={15} /><strong>{activeProject.name}</strong></>}
       </div>
 
-      <div className="list-titlebar">
-        <div>
-          <p className="date-label">{activeProject ? 'Project folder' : 'Task list'}</p>
-          <h2>{activeProject?.name ?? activeList.name}</h2>
-          <span>{scopedTasks.length} visible tasks</span>
+      <div className="view-scroll">
+        <div className="list-titlebar">
+          <div>
+            <p className="date-label">{activeProject ? 'Project folder' : 'Task list'}</p>
+            <h2>{activeProject?.name ?? activeList.name}</h2>
+            <span>{scopedTasks.length} visible tasks</span>
+          </div>
+          <div className="list-title-actions">
+            {activeProject && <label className="project-planner-toggle"><input key={activeProject.id} type="checkbox" defaultChecked={activeProject.includeInPlanner !== false} onChange={(event) => setProjectPlannerInclusion(event.target.checked)} /> Show in planner</label>}
+            {!activeProject && <button type="button" onClick={() => setCreationMode('project')}><FolderKanban size={17} /> New project</button>}
+            <button type="button" onClick={() => setCreationMode('section')}><Plus size={17} /> New section</button>
+            {!activeProject && <button className="danger-button" type="button" disabled={!canDeleteList} onClick={deleteList} title={canDeleteList ? 'Delete list and its archived tasks' : 'Archive every task before deleting this list'}><Trash2 size={17} /> Delete list</button>}
+            {activeProject && <button className="danger-button" type="button" disabled={!canDeleteProject} onClick={deleteProject} title={canDeleteProject ? 'Delete project and its archived tasks' : 'Archive every task before deleting this project'}><Trash2 size={17} /> Delete project</button>}
+          </div>
         </div>
-        <div className="list-title-actions">
-          {activeProject && <label className="project-planner-toggle"><input key={activeProject.id} type="checkbox" defaultChecked={activeProject.includeInPlanner !== false} onChange={(event) => setProjectPlannerInclusion(event.target.checked)} /> Show in planner</label>}
-          {!activeProject && <button type="button" onClick={() => setCreationMode('project')}><FolderKanban size={17} /> New project</button>}
-          <button type="button" onClick={() => setCreationMode('section')}><Plus size={17} /> New section</button>
-          {!activeProject && <button className="danger-button" type="button" disabled={!canDeleteList} onClick={deleteList} title={canDeleteList ? 'Delete list and its archived tasks' : 'Archive every task before deleting this list'}><Trash2 size={17} /> Delete list</button>}
-          {activeProject && <button className="danger-button" type="button" disabled={!canDeleteProject} onClick={deleteProject} title={canDeleteProject ? 'Delete project and its archived tasks' : 'Archive every task before deleting this project'}><Trash2 size={17} /> Delete project</button>}
+
+        {creationMode && (
+          <form className="inline-create" onSubmit={createContainer}>
+            {creationMode === 'project' ? <FolderKanban size={18} /> : <Plus size={18} />}
+            <input autoFocus value={creationName} onChange={(event) => setCreationName(event.target.value)} placeholder={creationMode === 'project' ? 'Project folder name' : 'Section name'} aria-label={creationMode === 'project' ? 'Project folder name' : 'Section name'} />
+            <button type="submit" disabled={!creationName.trim()}>Create</button>
+            <button type="button" onClick={() => setCreationMode(undefined)}>Cancel</button>
+          </form>
+        )}
+
+        <div className="list-toolbar">
+          <Search size={18} />
+          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Filter this list" aria-label="Filter this list" />
         </div>
-      </div>
 
-      {creationMode && (
-        <form className="inline-create" onSubmit={createContainer}>
-          {creationMode === 'project' ? <FolderKanban size={18} /> : <Plus size={18} />}
-          <input autoFocus value={creationName} onChange={(event) => setCreationName(event.target.value)} placeholder={creationMode === 'project' ? 'Project folder name' : 'Section name'} aria-label={creationMode === 'project' ? 'Project folder name' : 'Section name'} />
-          <button type="submit" disabled={!creationName.trim()}>Create</button>
-          <button type="button" onClick={() => setCreationMode(undefined)}>Cancel</button>
-        </form>
-      )}
+        {!activeProject && listProjects.length > 0 && (
+          <div className="project-strip">
+            {listProjects.map((project) => {
+              const projectTasks = tasks.filter((task) => task.projectId === project.id && !task.archived)
+              return (
+                <button type="button" key={project.id} onClick={() => onLocationChange(activeList.id, project.id)}>
+                  <FolderKanban size={19} />
+                  <span><strong>{project.name}</strong><small>{projectTasks.length} tasks</small></span>
+                  <ChevronRight size={17} />
+                </button>
+              )
+            })}
+          </div>
+        )}
 
-      <div className="list-toolbar">
-        <Search size={18} />
-        <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Filter this list" aria-label="Filter this list" />
-      </div>
-
-      {!activeProject && listProjects.length > 0 && (
-        <div className="project-strip">
-          {listProjects.map((project) => {
-            const projectTasks = tasks.filter((task) => task.projectId === project.id && !task.archived)
-            return (
-              <button type="button" key={project.id} onClick={() => onLocationChange(activeList.id, project.id)}>
-                <FolderKanban size={19} />
-                <span><strong>{project.name}</strong><small>{projectTasks.length} tasks</small></span>
-                <ChevronRight size={17} />
-              </button>
-            )
-          })}
-        </div>
-      )}
-
-      <SheetSection
-        key={`todo:${activeList.id}:${activeProject?.id ?? 'root'}`}
-        name="Todo"
-        tasks={scopedTasks.filter((task) => !task.sectionId || !listSections.some((section) => section.id === task.sectionId))}
-        focusedTaskId={focusedTaskId}
-        listId={activeList.id}
-        projectId={activeProject?.id}
-        activeDay={activeDay}
-        managedTaskIds={managedTaskIds}
-        onManage={onManage}
-        onEdit={onEdit}
-        onActions={onActions}
-      />
-      {listSections.map((section, index) => (
         <SheetSection
-          key={section.id}
-          section={section}
-          name={section.name}
-          tasks={scopedTasks.filter((task) => task.sectionId === section.id)}
-          sectionTasks={tasks.filter((task) => task.listId === activeList.id && task.projectId === activeProject?.id && task.sectionId === section.id)}
+          key={`todo:${activeList.id}:${activeProject?.id ?? 'root'}`}
+          name="Todo"
+          tasks={scopedTasks.filter((task) => !task.sectionId || !listSections.some((section) => section.id === task.sectionId))}
           focusedTaskId={focusedTaskId}
           listId={activeList.id}
-          sectionId={section.id}
           projectId={activeProject?.id}
           activeDay={activeDay}
           managedTaskIds={managedTaskIds}
           onManage={onManage}
           onEdit={onEdit}
           onActions={onActions}
-          onMoveSection={moveSection}
-          canMoveSectionUp={index > 0}
-          canMoveSectionDown={index < listSections.length - 1}
         />
-      ))}
+        {listSections.map((section, index) => (
+          <SheetSection
+            key={section.id}
+            section={section}
+            name={section.name}
+            tasks={scopedTasks.filter((task) => task.sectionId === section.id)}
+            sectionTasks={tasks.filter((task) => task.listId === activeList.id && task.projectId === activeProject?.id && task.sectionId === section.id)}
+            focusedTaskId={focusedTaskId}
+            listId={activeList.id}
+            sectionId={section.id}
+            projectId={activeProject?.id}
+            activeDay={activeDay}
+            managedTaskIds={managedTaskIds}
+            onManage={onManage}
+            onEdit={onEdit}
+            onActions={onActions}
+            onMoveSection={moveSection}
+            canMoveSectionUp={index > 0}
+            canMoveSectionDown={index < listSections.length - 1}
+          />
+        ))}
+      </div>
     </section>
   )
 }
@@ -289,7 +291,7 @@ function ListIndex({ lists, sections, tasks, projects, onOpen, onOpenTask }: { l
   }
 
   return (
-    <section className="list-index">
+    <section className="list-index view-scroll">
       <div className="list-titlebar">
         <div><p className="date-label">Task library</p><h2>Lists</h2><span>Browse and organize complete task inventories</span></div>
         <div className="list-index-actions">

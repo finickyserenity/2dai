@@ -185,8 +185,9 @@ test('keeps the task list in place while the task options panel is open', async 
     await expect(page.getByRole('button', { name: `Complete ${title}` })).toBeVisible()
   }
 
-  await page.evaluate(() => window.scrollTo(0, 120))
-  const before = await page.evaluate(() => window.scrollY)
+  const content = page.locator('.view-scroll')
+  await content.evaluate((element) => element.scrollTo(0, 120))
+  const before = await content.evaluate((element) => element.scrollTop)
   expect(before).toBeGreaterThan(0)
 
   const rowEdges = () => page.locator('.task-row').first().evaluate((row) => { const box = row.getBoundingClientRect(); return [box.left, box.right] })
@@ -194,7 +195,7 @@ test('keeps the task list in place while the task options panel is open', async 
   await page.getByRole('button', { name: 'Options for Scroll lock one' }).click()
   await expect(page.getByRole('dialog')).toBeVisible()
   expect(await rowEdges()).toEqual(edgesBefore)
-  const opened = await page.evaluate(() => window.scrollY)
+  const opened = await content.evaluate((element) => element.scrollTop)
 
   // Wheel over both the dimmed backdrop and the panel itself.
   await page.mouse.move(450, 20)
@@ -202,12 +203,34 @@ test('keeps the task list in place while the task options panel is open', async 
   await page.mouse.move(450, 300)
   await page.mouse.wheel(0, 300)
   await page.waitForTimeout(200)
-  expect(await page.evaluate(() => getComputedStyle(document.documentElement).overflowY)).toBe('hidden')
+  expect(await content.evaluate((element) => element.scrollTop)).toBe(opened)
 
   await page.getByRole('button', { name: 'Done' }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
-  expect(await page.evaluate(() => getComputedStyle(document.documentElement).overflowY)).not.toBe('hidden')
-  expect(await page.evaluate(() => window.scrollY)).toBe(opened)
+  expect(await content.evaluate((element) => element.scrollTop)).toBe(opened)
+})
+
+test('keeps the view tabs and list breadcrumbs on screen while the content beneath them scrolls', async ({ page }) => {
+  // About the room left on a phone once the keyboard is up.
+  await page.setViewportSize({ width: 390, height: 420 })
+  const tabs = page.getByLabel('Planning range')
+  const top = (locator: ReturnType<Page['locator']>) => locator.evaluate((element) => element.getBoundingClientRect().top)
+
+  const tabsTop = await top(tabs)
+  await page.locator('.view-scroll').evaluate((element) => element.scrollTo(0, element.scrollHeight))
+  expect(await page.locator('.view-scroll').evaluate((element) => element.scrollTop)).toBeGreaterThan(0)
+  expect(await top(tabs)).toBe(tabsTop)
+  expect(await page.evaluate(() => window.scrollY)).toBe(0)
+
+  await tabs.getByRole('button', { name: 'Lists' }).click()
+  await page.locator('.list-grid').getByRole('button', { name: /^Household\b/ }).click()
+  const breadcrumbs = page.locator('.list-breadcrumbs')
+  const breadcrumbsTop = await top(breadcrumbs)
+  await page.locator('.view-scroll').evaluate((element) => element.scrollTo(0, element.scrollHeight))
+  expect(await page.locator('.view-scroll').evaluate((element) => element.scrollTop)).toBeGreaterThan(0)
+  expect(await top(breadcrumbs)).toBe(breadcrumbsTop)
+  await expect(breadcrumbs.getByRole('button', { name: 'Lists' })).toBeInViewport()
+  await expect(tabs).toBeInViewport()
 })
 
 async function storedTask(page: Page, title: string) {

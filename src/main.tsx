@@ -9,6 +9,7 @@ import '@fontsource/manrope/600.css'
 import '@fontsource/manrope/700.css'
 import './index.css'
 import App from './App.tsx'
+import { fitAppToVisualViewport } from './visualViewport.ts'
 
 let serviceWorkerRegistration: ServiceWorkerRegistration | undefined
 const updateSW = registerSW({
@@ -24,6 +25,8 @@ async function refreshApp() {
   await updateSW(true)
   window.location.reload()
 }
+
+fitAppToVisualViewport()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
