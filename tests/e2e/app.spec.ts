@@ -880,6 +880,66 @@ test('never flashes a completed row back before the empty state appears', async 
   expect(classes.filter((value) => !value.includes('leaving'))).toEqual([])
 })
 
+test('gives up on a long press once the finger moves or the list scrolls', async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 420 })
+  const entry = page.getByRole('textbox', { name: 'New task' })
+  for (const title of ['Drag one', 'Drag two', 'Drag three', 'Drag four']) {
+    await entry.fill(title)
+    await entry.press('Enter')
+    await expect(page.getByRole('button', { name: `Complete ${title}` })).toBeVisible()
+  }
+  const row = page.locator('.task-copy', { hasText: 'Drag one' })
+  const content = page.locator('.view-scroll')
+  // Brings the row into view, lets that scroll settle (scroll events land a frame later and would
+  // cancel the press), then puts a finger down on it.
+  const pressRow = async () => {
+    await row.scrollIntoViewIfNeeded()
+    await page.waitForTimeout(100)
+    const box = (await row.boundingBox())!
+    await page.mouse.move(box.x + 40, box.y + box.height / 2)
+    await page.mouse.down()
+    return box
+  }
+
+  // A drag that starts on a row.
+  const box = await pressRow()
+  await page.mouse.move(box.x + 40, box.y + box.height / 2 - 30, { steps: 5 })
+  await page.waitForTimeout(650)
+  await page.mouse.up()
+  await page.waitForTimeout(300) // past the double-tap wait, in case the release counted as a tap
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+
+  // A scroll that starts on a row, without the pointer itself moving.
+  await pressRow()
+  const scrolledFrom = await content.evaluate((element) => element.scrollTop)
+  await content.evaluate((element) => element.scrollBy(0, 30))
+  expect(await content.evaluate((element) => element.scrollTop)).not.toBe(scrolledFrom)
+  await page.waitForTimeout(650)
+  await page.mouse.move(0, 0)
+  await page.mouse.up()
+  await page.waitForTimeout(300)
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+
+  // Holding still still opens the menu, even after a little jitter.
+  const still = await pressRow()
+  await page.mouse.move(still.x + 43, still.y + still.height / 2 + 2)
+  await page.waitForTimeout(650)
+  await page.mouse.up()
+  await expect(page.getByRole('dialog').getByRole('heading', { name: 'Drag one' })).toBeVisible()
+})
+
+test('keeps the page itself from scrolling or bouncing', async ({ page }) => {
+  const root = await page.evaluate(() => {
+    const style = getComputedStyle(document.documentElement)
+    return { overflow: style.overflowY, overscroll: style.overscrollBehaviorY }
+  })
+  expect(root).toEqual({ overflow: 'hidden', overscroll: 'none' })
+  await page.mouse.move(100, 30)
+  await page.mouse.wheel(0, 400)
+  await page.waitForTimeout(100)
+  expect(await page.evaluate(() => [window.scrollY, getComputedStyle(document.documentElement).getPropertyValue('--app-top')])).toEqual([0, '0px'])
+})
+
 test('offers copy, open-link and call actions from a long press on a task', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write'])
   const entry = page.getByRole('textbox', { name: 'New task' })

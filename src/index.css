@@ -82,7 +82,10 @@
 }
 
 * { box-sizing: border-box; }
-body { min-width: 320px; min-height: 100vh; margin: 0; }
+/* The app scrolls inside its own panes, so the page itself never moves: no rubber-band bounce or
+   pull-to-refresh when a drag starts on the header or on a list too short to scroll. */
+html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
+body { min-width: 320px; margin: 0; }
 /* Fills the notch/status-bar area on iOS (viewport-fit=cover) so it recolors with the theme immediately. */
 body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: var(--top-inset); z-index: 50; background: var(--status-bar); pointer-events: none; }
 button, input, select { letter-spacing: 0; }
