@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useId, useLayoutEffect, useRef, useState, type ChangeEvent, type ComponentProps, type CSSProperties, type FormEvent, type ReactNode } from 'react'
+import { Fragment, useEffect, useId, useLayoutEffect, useRef, useState, type ChangeEvent, type CSSProperties, type FormEvent, type ReactNode } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
   Archive,
@@ -36,6 +36,7 @@ import { keepEntryFocus, submitOnLeave } from './forms'
 import { useLongPress } from './longPress'
 import { createId } from './id'
 import { FilterMenu, type FilterOption } from './FilterMenu'
+import { GrowingTextarea } from './GrowingTextarea'
 import { ListWorkspace } from './ListWorkspace'
 import { SyncSettings } from './sync/SyncSettings'
 import { parseConnectInput, type ConnectTarget } from './sync/encoding'
@@ -1014,18 +1015,6 @@ function ClearableField({ label, value, onClear, children }: { label: string; va
       </span>
     </div>
   )
-}
-
-// A single-row textarea that grows with its content instead of scrolling.
-function GrowingTextarea({ value, ...props }: ComponentProps<'textarea'> & { value: string }) {
-  const ref = useRef<HTMLTextAreaElement>(null)
-  useLayoutEffect(() => {
-    const element = ref.current
-    if (!element) return
-    element.style.height = 'auto'
-    element.style.height = `${element.scrollHeight}px`
-  }, [value])
-  return <textarea ref={ref} rows={1} value={value} {...props} />
 }
 
 const DELAY_TARGETS: Array<{ target: DelayTarget; label: string }> = [

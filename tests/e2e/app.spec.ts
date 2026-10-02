@@ -1048,6 +1048,44 @@ test('filters the task search by due, unscheduled, done and archived, and clears
   await expect(clear).toBeVisible()
 })
 
+test('renames a list and a project from their headings', async ({ page }) => {
+  await page.getByLabel('Planning range').getByRole('button', { name: 'Lists' }).click()
+  await page.locator('.list-grid').getByRole('button', { name: /^Household\b/ }).click()
+  const listName = page.getByRole('textbox', { name: 'List name' })
+  await expect(listName).toHaveValue('Household')
+
+  // Escape and an empty name both leave the name alone.
+  await listName.click()
+  await listName.fill('Discarded')
+  await listName.press('Escape')
+  await expect(listName).toHaveValue('Household')
+  await listName.fill('   ')
+  await listName.blur()
+  await expect(listName).toHaveValue('Household')
+
+  await listName.fill('Home  chores')
+  await listName.press('Enter')
+  await expect(listName).not.toBeFocused()
+  await expect(listName).toHaveValue('Home chores')
+  await expect(page.locator('.list-breadcrumbs')).toContainText('Home chores')
+
+  await page.getByRole('button', { name: 'New project' }).click()
+  await page.getByRole('textbox', { name: 'Project folder name' }).fill('Garage')
+  await page.getByRole('button', { name: 'Create' }).click()
+  const projectName = page.getByRole('textbox', { name: 'Project name' })
+  await expect(projectName).toHaveValue('Garage')
+  // Leaving the field saves too.
+  await projectName.fill('Garage cleanout')
+  await page.locator('.list-titlebar .date-label').click()
+  await expect(page.locator('.list-breadcrumbs')).toContainText('Garage cleanout')
+
+  await page.reload()
+  await page.getByLabel('Planning range').getByRole('button', { name: 'Lists' }).click()
+  await expect(page.locator('.list-grid strong')).toHaveText(['Errands', 'Home chores', 'Personal'])
+  await page.locator('.list-grid').getByRole('button', { name: /^Home chores\b/ }).click()
+  await expect(page.locator('.project-strip')).toContainText('Garage cleanout')
+})
+
 test('exports every local data store as a JSON backup', async ({ page }) => {
   await page.getByRole('button', { name: 'Open menu' }).click()
   await expect(page.getByRole('button', { name: 'Close settings' })).toBeVisible()

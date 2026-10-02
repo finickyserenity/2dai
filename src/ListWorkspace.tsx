@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import {
   Archive,
   ArrowDown,
@@ -25,6 +25,7 @@ import { keepEntryFocus, submitOnLeave } from './forms'
 import { useLongPress } from './longPress'
 import { createId } from './id'
 import { FilterMenu, type FilterOption } from './FilterMenu'
+import { GrowingTextarea } from './GrowingTextarea'
 import { ImportListDialog } from './ImportListDialog.tsx'
 import { isUnscheduled, isWeekend, parseTaskInput, TITLE_MAX_LENGTH, type ProjectFolder, type Task, type TaskAction, type TaskList, type TaskSection } from './domain'
 
@@ -142,6 +143,11 @@ export function ListWorkspace({
     if (deleted) onLocationChange(activeListId)
   }
 
+  async function renameActive(name: string) {
+    if (activeProject) await db.projects.update(activeProject.id, { name })
+    else await db.lists.update(activeListId, { name })
+  }
+
   async function setProjectPlannerInclusion(includeInPlanner: boolean) {
     if (!activeProject) return
     await db.projects.update(activeProject.id, { includeInPlanner })
@@ -187,7 +193,14 @@ export function ListWorkspace({
         <div className="list-titlebar">
           <div>
             <p className="date-label">{activeProject ? 'Project folder' : 'Task list'}</p>
-            <h2>{activeProject?.name ?? activeList.name}</h2>
+            <h2>
+              <EditableName
+                key={`${activeProject?.id ?? activeList.id}:${activeProject?.name ?? activeList.name}`}
+                name={activeProject?.name ?? activeList.name}
+                label={activeProject ? 'Project name' : 'List name'}
+                onRename={renameActive}
+              />
+            </h2>
             <span>{scopedTasks.length} visible tasks</span>
           </div>
           <div className="list-title-actions">
@@ -591,6 +604,43 @@ function readCollapsedState(key: string): boolean {
 function shortDate(value: string): string {
   return new Intl.DateTimeFormat('en-US', { month: 'numeric', day: 'numeric' }).format(new Date(`${value}T12:00:00`))
 }
+// A list or project name shown as its page heading and edited in place, like a task title in its
+// options sheet: Enter or leaving the field saves, Escape puts the old name back.
+function EditableName({ name, label, onRename }: { name: string; label: string; onRename: (name: string) => Promise<void> }) {
+  const [draft, setDraft] = useState(name)
+  const discard = useRef(false)
+
+  function commit() {
+    const cleanName = draft.replace(/\s+/g, ' ').trim()
+    if (discard.current || !cleanName || cleanName === name) {
+      discard.current = false
+      setDraft(name)
+      return
+    }
+    void onRename(cleanName)
+  }
+
+  return (
+    <GrowingTextarea
+      className="title-name-input"
+      aria-label={label}
+      value={draft}
+      placeholder={label}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={commit}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault()
+          event.currentTarget.blur()
+        } else if (event.key === 'Escape') {
+          discard.current = true
+          event.currentTarget.blur()
+        }
+      }}
+    />
+  )
+}
+
 // A list row's title: tap opens the task options, holding opens the actions menu.
 function TaskName({ title, onOpen, onActions }: { title: string; onOpen: () => void; onActions: () => void }) {
   const press = useLongPress(onActions, onOpen)

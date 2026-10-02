@@ -173,7 +173,12 @@ main { --gutter: 24px; flex: 1; min-height: 0; display: flex; flex-direction: co
 .list-breadcrumbs button { display: flex; align-items: center; gap: 5px; padding: 4px; border: 0; color: var(--blue-700); background: transparent; font-weight: 700; }
 .list-breadcrumbs strong { overflow: hidden; color: var(--ink); text-overflow: ellipsis; white-space: nowrap; }
 .list-titlebar { display: flex; align-items: end; justify-content: space-between; gap: 18px; margin-bottom: 20px; }
+.list-titlebar > div:first-child { flex: 1; min-width: 0; }
 .list-titlebar h2 { margin: 2px 0; color: var(--ink); font: 700 30px/1.1 var(--display); }
+/* A list or project name that edits in place; it reads as the heading until hovered or focused. */
+.title-name-input { display: block; width: calc(100% + 8px); margin: 0 -4px; padding: 0 4px; border: 0; border-radius: 4px; color: inherit; background: transparent; font: inherit; resize: none; overflow: hidden; cursor: text; }
+.title-name-input:hover { background: var(--panel-muted); }
+.title-name-input:focus { outline: 2px solid var(--blue-400); outline-offset: 2px; background: var(--panel); }
 .list-titlebar span { color: var(--muted); font-size: 12px; }
 .list-titlebar > button, .list-title-actions button { display: flex; align-items: center; justify-content: center; gap: 7px; min-height: 38px; padding: 8px 12px; border: 1px solid var(--blue-200); border-radius: 5px; color: var(--blue-700); background: var(--panel); font-weight: 700; }
 .list-title-actions { display: flex; gap: 8px; }
@@ -358,7 +363,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 
 /* iOS Safari zooms the page when a focused field's text is under 16px. */
 @media (pointer: coarse) {
-  input, select, textarea { font-size: 16px !important; }
+  input, select, textarea:not(.title-name-input) { font-size: 16px !important; }
 }
 
 /* ---- Sync settings ---- */
