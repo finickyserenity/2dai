@@ -132,14 +132,16 @@ test('completes a delayed task from its checkbox', async ({ page }) => {
   await entry.press('Enter')
 
   await page.getByRole('button', { name: 'Delay Delayed then done task' }).click()
-  await page.getByLabel('Show managed').check()
+  await filterToday(page, 'Show skipped')
   await expect(page.getByRole('button', { name: 'Undo delay for Delayed then done task' })).toHaveAttribute('aria-pressed', 'true')
 
   await page.getByRole('button', { name: 'Complete Delayed then done task' }).click()
-  await expect(page.getByRole('button', { name: 'Uncheck Delayed then done task' })).toHaveAttribute('aria-pressed', 'true')
   await expect(page.getByRole('button', { name: 'Undo delay for Delayed then done task' })).toHaveCount(0)
+  await filterToday(page, 'Show done')
+  await expect(page.getByRole('button', { name: 'Uncheck Delayed then done task' })).toHaveAttribute('aria-pressed', 'true')
 
   await page.getByRole('button', { name: 'Uncheck Delayed then done task' }).click()
+  await filterToday(page, 'Show due')
   await expect(page.getByRole('button', { name: 'Complete Delayed then done task' })).toHaveAttribute('aria-pressed', 'false')
   await expect(page.getByRole('button', { name: 'Delay Delayed then done task' })).toBeVisible()
 })
@@ -153,7 +155,7 @@ test('leaves completion times untouched when catching up on a previous day', asy
   await entry.fill('Forgotten task every 3 days')
   await entry.press('Enter')
   await page.getByRole('button', { name: /^Complete Forgotten task/ }).click()
-  await page.getByLabel('Show managed').check()
+  await filterToday(page, 'Show done')
   await expect(page.getByRole('button', { name: /^Uncheck Forgotten task/ })).toHaveAttribute('aria-pressed', 'true')
 
   const task = await page.evaluate(async () => {
@@ -271,6 +273,76 @@ test('opens a planner task\'s options on tap and shows it in its list on double 
   await expect(page.locator('#task-tidy-living-space')).toHaveCount(0)
 })
 
+test('filters Today to due, done or skipped tasks, or hides daily and recurring ones, with effort to match', async ({ page }) => {
+  const entry = page.getByRole('textbox', { name: 'New task' })
+  for (const title of ['Filter once', 'Filter weekly 7d']) {
+    await entry.fill(title)
+    await entry.press('Enter')
+    await expect(entry).toHaveValue('')
+  }
+  const titles = page.locator('.task-list .task-title')
+  const effort = page.locator('.effort-meter strong')
+  // Seeded: "Check today's schedule" (daily, effort 1) and "Tidy up" (daily, effort 2).
+  await expect(titles).toHaveCount(4)
+  await expect(effort).toHaveText('5')
+
+  await filterToday(page, 'Hide daily')
+  await expect(page.locator('.today-filter-label')).toHaveText('Hiding daily')
+  await expect(titles).toHaveText(['Filter once', 'Filter weekly'])
+  await expect(effort).toHaveText('2')
+  await filterToday(page, 'Hide recurring')
+  await expect(titles).toHaveText(['Filter once'])
+  await expect(effort).toHaveText('1')
+
+  await filterToday(page, 'Show due')
+  await page.getByRole('button', { name: 'Complete Filter once' }).click()
+  await expect(page.getByRole('button', { name: 'Complete Filter once' })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Delay Tidy up' }).click()
+
+  await filterToday(page, 'Show done')
+  await expect(page.locator('.today-filter-label')).toHaveText('Showing done')
+  await expect(titles).toHaveText(['Filter once'])
+  await expect(effort).toHaveText('1')
+  await filterToday(page, 'Show skipped')
+  await expect(page.locator('.today-filter-label')).toHaveText('Showing skipped')
+  await expect(titles).toHaveText(['Tidy up'])
+  await expect(effort).toHaveText('2')
+  await filterToday(page, 'Show due')
+  await expect(page.locator('.today-filter-label')).toHaveText('Showing due')
+  await expect(effort).toHaveText('2')
+  await expect(page.getByRole('button', { name: 'Reset to show due' })).toHaveCount(0)
+
+  // The x beside a filter returns to Show due.
+  await filterToday(page, 'Show done')
+  await page.getByRole('button', { name: 'Reset to show due' }).click()
+  await expect(page.locator('.today-filter-label')).toHaveText('Showing due')
+  await expect(page.getByRole('button', { name: 'Reset to show due' })).toHaveCount(0)
+
+  // The menu marks the current filter, works from the keyboard and closes on an outside press.
+  const trigger = page.locator('.today-filter-trigger')
+  await trigger.click()
+  const menu = page.getByRole('menu', { name: 'Today filter' })
+  await expect(menu.getByRole('menuitemradio', { name: 'Show due' })).toHaveAttribute('aria-checked', 'true')
+  await expect(menu.getByRole('menuitemradio', { name: 'Show due' })).toBeFocused()
+  await page.keyboard.press('ArrowDown')
+  await page.keyboard.press('ArrowDown')
+  await page.keyboard.press('Enter')
+  await expect(page.locator('.today-filter-label')).toHaveText('Showing skipped')
+  await expect(trigger).toBeFocused()
+  await trigger.click()
+  await page.keyboard.press('Escape')
+  await expect(menu).toHaveCount(0)
+  await trigger.click()
+  await page.locator('.day-heading h2').click()
+  await expect(menu).toHaveCount(0)
+})
+
+async function filterToday(page: Page, option: string) {
+  await page.locator('.today-filter-trigger').click()
+  await page.getByRole('menu', { name: 'Today filter' }).getByRole('menuitemradio', { name: option }).click()
+  await expect(page.getByRole('menu')).toHaveCount(0)
+}
+
 async function storedTask(page: Page, title: string) {
   return page.evaluate(async (taskTitle) => {
     const database = await new Promise<IDBDatabase>((resolve, reject) => {
@@ -298,7 +370,6 @@ test('offers longer delays and skipping from a long press on the delay button', 
     await entry.press('Enter')
     await expect(page.getByRole('button', { name: `Delay ${title}` })).toBeVisible()
   }
-  await page.getByLabel('Show managed').check()
 
   const today = new Date()
   const noon = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 12)
@@ -314,17 +385,22 @@ test('offers longer delays and skipping from a long press on the delay button', 
   await expect(page.getByRole('button', { name: 'Undo delay for Long press week' })).toHaveCount(0)
   await page.getByRole('button', { name: /Until next week/ }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
+  await filterToday(page, 'Show skipped')
   await expect(page.getByRole('button', { name: 'Undo delay for Long press week' })).toBeVisible()
   expect((await storedTask(page, 'Long press week'))?.nextDueAt).toBe(localDateKey(nextMonday))
+  await filterToday(page, 'Show due')
 
   await page.getByRole('button', { name: 'Delay Long press skip' }).click({ button: 'right' })
   await page.getByRole('button', { name: /Skip this occurrence/ }).click()
+  await filterToday(page, 'Show skipped')
   await expect(page.getByRole('button', { name: 'Undo skip for Long press skip' })).toBeVisible()
   await page.getByRole('button', { name: 'Undo skip for Long press skip' }).click()
+  await filterToday(page, 'Show due')
   await expect(page.getByRole('button', { name: 'Delay Long press skip' })).toBeVisible()
 
   await page.getByRole('button', { name: 'Delay Quick delay' }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
+  await filterToday(page, 'Show skipped')
   await expect(page.getByRole('button', { name: 'Undo delay for Quick delay' })).toBeVisible()
   const tomorrow = new Date(noon)
   tomorrow.setDate(noon.getDate() + 1)
@@ -365,7 +441,7 @@ test('tracks effort from the play button until the task is checked off', async (
 
   await page.getByRole('button', { name: 'Complete Tracked task' }).click()
   await page.clock.runFor(1_000) // let the completion animation finish and commit
-  await page.getByLabel('Show managed').check()
+  await filterToday(page, 'Show done')
   await expect(page.getByRole('button', { name: 'Uncheck Tracked task' })).toBeVisible()
   let task = await storedTask(page, 'Tracked task')
   expect(task?.effort).toBe(4)
@@ -373,6 +449,7 @@ test('tracks effort from the play button until the task is checked off', async (
   expect(task?.trackedMs).toBeUndefined()
 
   await page.getByRole('button', { name: 'Uncheck Tracked task' }).click()
+  await filterToday(page, 'Show due')
   await expect(page.getByRole('button', { name: 'Effort 4 for Tracked task, paused' })).toBeVisible()
   task = await storedTask(page, 'Tracked task')
   expect(task?.effort).toBe(1)
@@ -527,7 +604,7 @@ test('adds a pending entry when focus leaves the quick-add box', async ({ page }
   await page.getByRole('combobox', { name: 'Task list' }).focus()
   await expect(page.getByText('Blur added task', { exact: true })).toHaveCount(0)
   await entry.focus()
-  await page.getByLabel('Show managed').focus()
+  await page.locator('.today-filter-trigger').focus()
   await expect(page.getByText('Blur added task', { exact: true })).toBeVisible()
   await expect(entry).toHaveValue('')
   expect(await entry.getAttribute('maxlength')).toBe('300')
@@ -723,7 +800,7 @@ test('strikes through and slides a completed task away, and a second tap cancels
   }))
   expect(Math.max(...overflowed)).toBe(0)
   await expect(row).toHaveCount(0)
-  await page.getByLabel('Show managed').check()
+  await filterToday(page, 'Show done')
   await expect(page.getByRole('button', { name: 'Uncheck Animated task' })).toHaveAttribute('aria-pressed', 'true')
 })
 

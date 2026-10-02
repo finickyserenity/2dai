@@ -53,6 +53,19 @@ main { --gutter: 24px; flex: 1; min-height: 0; display: flex; flex-direction: co
 .new-day small { color: var(--muted); }
 .section-label { min-height: 34px; display: flex; align-items: center; justify-content: space-between; color: var(--muted); font-size: 12px; font-weight: 700; text-transform: uppercase; }
 .section-label label { display: flex; align-items: center; gap: 6px; text-transform: none; font-weight: 600; }
+.today-filter { position: relative; display: flex; align-items: center; gap: 4px; text-transform: none; }
+.today-filter-reset { width: 26px; height: 26px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 13px; color: var(--muted); background: var(--panel-muted); }
+.today-filter-reset:hover { color: var(--ink); background: var(--blue-100); }
+.today-filter-trigger { min-height: 32px; display: flex; align-items: center; gap: 5px; padding: 4px 2px 4px 6px; border: 0; border-radius: 4px; color: var(--blue-700); background: transparent; font-size: 12px; font-weight: 700; }
+.today-filter-trigger > svg:last-child { transition: rotate 150ms ease-out; }
+.today-filter-trigger[aria-expanded='true'] > svg:last-child { rotate: 180deg; }
+.today-filter-menu { position: absolute; top: calc(100% + 4px); right: 0; z-index: 6; min-width: 220px; display: grid; gap: 2px; padding: 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); box-shadow: 0 12px 30px var(--shadow-color); animation: menu-in 120ms ease-out; }
+.today-filter-menu button { min-height: 46px; display: grid; grid-template-columns: 20px 1fr 16px; align-items: center; gap: 12px; padding: 0 12px; border: 0; border-radius: 5px; color: var(--ink); background: transparent; font: 600 15px/1.2 var(--body); text-align: left; }
+.today-filter-menu button > svg:first-child { color: var(--blue-600); }
+.today-filter-menu button:hover, .today-filter-menu button:focus-visible { outline: 0; background: var(--panel-muted); }
+.today-filter-menu button[aria-checked='true'] { color: var(--blue-700); background: var(--blue-50); }
+.today-filter-separator { height: 1px; margin: 4px 8px; background: var(--line); }
+@keyframes menu-in { from { opacity: 0; translate: 0 -4px; } }
 .task-list { border-top: 1px solid var(--line); overflow-x: clip; } /* keeps a sliding row from adding a horizontal scrollbar */
 /* Side lines live on the rows (and dividers) rather than the list, so they leave with a completed row. */
 .task-list > .task-row, .task-list > .task-day-divider, .task-list > .task-week-divider { border-inline: 1px solid var(--line); }
