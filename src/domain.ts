@@ -191,6 +191,11 @@ export function isWeekend(value: Date | string): boolean {
   return date.getDay() === 0 || date.getDay() === 6
 }
 
+// A task with no repeat that is not in the planner only lives in its list, so it has no due date.
+export function isUnscheduled(task: Task): boolean {
+  return !task.intervalDays && task.scheduledForPlanner !== true
+}
+
 export function preferredTimeFor(task: Task, value: Date | string): string | undefined {
   return isWeekend(value)
     ? task.weekendPreferredTime ?? task.weekdayPreferredTime ?? task.preferredTime

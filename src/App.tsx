@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useId, useLayoutEffect, useRef, useState, type ChangeEvent, type ComponentProps, type CSSProperties, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
+import { Fragment, useEffect, useId, useLayoutEffect, useRef, useState, type ChangeEvent, type ComponentProps, type CSSProperties, type FormEvent, type ReactNode } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
   Archive,
@@ -6,7 +6,6 @@ import {
   CalendarOff,
   Check,
   CircleCheckBig,
-  ChevronDown,
   ChevronRight,
   ClipboardList,
   Cloud,
@@ -31,12 +30,12 @@ import {
   Star,
   Upload,
   X,
-  type LucideIcon,
 } from 'lucide-react'
 import { createBackup, db, restoreBackup } from './db'
 import { keepEntryFocus, submitOnLeave } from './forms'
 import { useLongPress } from './longPress'
 import { createId } from './id'
+import { FilterMenu, type FilterOption } from './FilterMenu'
 import { ListWorkspace } from './ListWorkspace'
 import { SyncSettings } from './sync/SyncSettings'
 import { parseConnectInput, type ConnectTarget } from './sync/encoding'
@@ -61,6 +60,7 @@ import {
   nextThemeChange,
   NOTES_MAX_LENGTH,
   parseTaskInput,
+  isUnscheduled,
   preferredTimeFor,
   TITLE_MAX_LENGTH,
   trackedMilliseconds,
@@ -114,8 +114,7 @@ function App({ onRefreshApp }: AppProps) {
   const [effortHoursDraft, setEffortHoursDraft] = useState('')
   const [effortMinutesDraft, setEffortMinutesDraft] = useState('')
   const [optionsTab, setOptionsTab] = useState<OptionsTab>('details')
-  const [showCompleted, setShowCompleted] = useState(false)
-  const [todayFilter, setTodayFilter] = useState<TodayFilter>('due')
+  const [plannerFilters, setPlannerFilters] = useState<Record<PlannerView, PlannerFilter>>({ today: 'due', week: 'due', month: 'due' })
   const [sheetListId, setSheetListId] = useState<string>()
   const [sheetProjectId, setSheetProjectId] = useState<string>()
   const [sheetTaskId, setSheetTaskId] = useState<string>()
@@ -260,16 +259,15 @@ function App({ onRefreshApp }: AppProps) {
     }, new Map<string, TaskEvent>())
   const completedIds = new Set([...managedEvents].filter(([, event]) => event.action === 'completed').map(([taskId]) => taskId))
   const managedIds = new Set(managedEvents.keys())
-  const showsManaged = view === 'today' ? todayFilter === 'done' || todayFilter === 'skipped' : showCompleted
-  const visibleTasks = view === 'sheets' ? []
-    : view === 'today' ? tasksForToday(snapshot.tasks, snapshot.activeDay, managedEvents, todayFilter)
-    : tasksForView(snapshot.tasks, view, activeDate, managedIds, showCompleted)
+  const plannerFilter = view === 'sheets' ? 'due' : plannerFilters[view]
+  const showsManaged = plannerFilter === 'done' || plannerFilter === 'skipped'
+  const visibleTasks = view === 'sheets' ? [] : tasksForView(snapshot.tasks, view, activeDate, managedEvents, plannerFilter)
   // Project tasks roll up while waiting; once done or skipped they are listed on their own.
-  const dueProjects = view === 'sheets' || (view === 'today' && showsManaged) ? [] : snapshot.projects
+  const dueProjects = view === 'sheets' || showsManaged ? [] : snapshot.projects
     .filter((project) => !project.archived && project.includeInPlanner !== false)
     .map((project) => ({
       project,
-      tasks: tasksForProjectView(snapshot.tasks, project.id, view, activeDate, managedIds, todayFilter),
+      tasks: tasksForProjectView(snapshot.tasks, project.id, view, activeDate, managedIds, plannerFilter),
     }))
     .filter((group) => group.tasks.length > 0)
   // Rollups lead Today; on Week and Month they sit with the day their first task falls due.
@@ -780,11 +778,13 @@ function App({ onRefreshApp }: AppProps) {
             <section className="task-section" aria-live="polite">
               <div className="section-label">
                 <span>{view === 'today' ? `${visibleTasks.length + dueProjects.length} ${visibleTasks.length + dueProjects.length === 1 ? 'item' : 'items'}` : 'Upcoming'}</span>
-                {view === 'today' ? (
-                  <TodayFilterMenu value={todayFilter} onChange={setTodayFilter} />
-                ) : (
-                  <label><input type="checkbox" checked={showCompleted} onChange={(event) => setShowCompleted(event.target.checked)} /> Show managed</label>
-                )}
+                <FilterMenu
+                  label={`${viewLabels[view]} filter`}
+                  options={view === 'today' ? PLANNER_FILTERS : RANGE_FILTERS}
+                  value={plannerFilter}
+                  onChange={(filter) => setPlannerFilters((filters) => ({ ...filters, [view]: filter }))}
+                  reset={plannerFilter === 'due' ? undefined : { label: 'Reset to show due', side: 'start', onReset: () => setPlannerFilters((filters) => ({ ...filters, [view]: 'due' })) }}
+                />
               </div>
 
               <div className="task-list">
@@ -850,7 +850,7 @@ function App({ onRefreshApp }: AppProps) {
                   )
                 })}
                 {!visibleTasks.length && !dueProjects.length && (
-                  <div className="empty-state"><Check size={26} /><strong>Nothing waiting here</strong><span>{view === 'today' ? TODAY_EMPTY_MESSAGES[todayFilter] : view === 'week' ? 'No weekly or one-time tasks are due in this range.' : 'No monthly or one-time tasks are due in this range.'}</span></div>
+                  <div className="empty-state"><Check size={26} /><strong>Nothing waiting here</strong><span>{emptyPlannerMessage(view, plannerFilter)}</span></div>
                 )}
               </div>
             </section>
@@ -966,22 +966,24 @@ function App({ onRefreshApp }: AppProps) {
 }
 
 type OptionsTab = 'details' | 'notes'
-type TodayFilter = 'due' | 'done' | 'skipped' | 'hide-daily' | 'hide-recurring'
+type PlannerFilter = 'due' | 'done' | 'skipped' | 'hide-daily' | 'hide-recurring'
 
-const TODAY_FILTERS: Array<{ filter: TodayFilter; option: string; label: string; icon: LucideIcon }> = [
-  { filter: 'due', option: 'Show due', label: 'Showing due', icon: Hourglass },
-  { filter: 'done', option: 'Show done', label: 'Showing done', icon: CircleCheckBig },
-  { filter: 'skipped', option: 'Show skipped', label: 'Showing skipped', icon: SkipForward },
-  { filter: 'hide-daily', option: 'Hide daily', label: 'Hiding daily', icon: CalendarOff },
-  { filter: 'hide-recurring', option: 'Hide recurring', label: 'Hiding recurring', icon: RepeatOff },
+const PLANNER_FILTERS: Array<FilterOption<PlannerFilter>> = [
+  { value: 'due', option: 'Show due', label: 'Showing due', icon: Hourglass, group: 'show' },
+  { value: 'done', option: 'Show done', label: 'Showing done', icon: CircleCheckBig, group: 'show' },
+  { value: 'skipped', option: 'Show skipped', label: 'Showing skipped', icon: SkipForward, group: 'show' },
+  { value: 'hide-daily', option: 'Hide daily', label: 'Hiding daily', icon: CalendarOff, group: 'hide' },
+  { value: 'hide-recurring', option: 'Hide recurring', label: 'Hiding recurring', icon: RepeatOff, group: 'hide' },
 ]
+// Daily tasks never reach Week or Month, so there is nothing for Hide daily to do there.
+const RANGE_FILTERS = PLANNER_FILTERS.filter((option) => option.value !== 'hide-daily')
 
-const TODAY_EMPTY_MESSAGES: Record<TodayFilter, string> = {
-  due: 'Add a task or take the win.',
-  done: 'Nothing checked off yet today.',
-  skipped: 'Nothing skipped or put off today.',
-  'hide-daily': 'Only daily tasks are left.',
-  'hide-recurring': 'Only recurring tasks are left.',
+function emptyPlannerMessage(view: PlannerView, filter: PlannerFilter): string {
+  if (filter === 'done') return 'Nothing checked off yet today.'
+  if (filter === 'skipped') return 'Nothing skipped or put off today.'
+  if (view === 'today') return filter === 'hide-daily' ? 'Only daily tasks are left.' : filter === 'hide-recurring' ? 'Only recurring tasks are left.' : 'Add a task or take the win.'
+  if (filter === 'hide-recurring') return 'Only recurring tasks are due in this range.'
+  return view === 'week' ? 'No weekly or one-time tasks are due in this range.' : 'No monthly or one-time tasks are due in this range.'
 }
 
 // Matches the row-leave animation length in App.css.
@@ -1045,81 +1047,6 @@ function DelayButton({ title, onDelay, onOpenMenu }: { title: string; onDelay: (
 function TaskRowBody({ onOpen, onOpenInList, onActions, children }: { onOpen: () => void; onOpenInList: () => void; onActions: () => void; children: ReactNode }) {
   const press = useLongPress(onActions, onOpen, onOpenInList)
   return <button className="task-copy" type="button" aria-haspopup="dialog" {...press}>{children}</button>
-}
-
-// Picks what Today lists. A small menu rather than the native picker, so each option is a large
-// target with an icon; the x beside it returns to the default.
-function TodayFilterMenu({ value, onChange }: { value: TodayFilter; onChange: (filter: TodayFilter) => void }) {
-  const [open, setOpen] = useState(false)
-  const rootRef = useRef<HTMLDivElement>(null)
-  const triggerRef = useRef<HTMLButtonElement>(null)
-  const menuId = useId()
-  const current = TODAY_FILTERS.find(({ filter }) => filter === value) ?? TODAY_FILTERS[0]
-  const CurrentIcon = current.icon
-
-  useEffect(() => {
-    if (!open) return
-    rootRef.current?.querySelector<HTMLElement>('[role="menuitemradio"][aria-checked="true"]')?.focus()
-    function closeOnOutsidePress(event: PointerEvent) {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false)
-    }
-    document.addEventListener('pointerdown', closeOnOutsidePress)
-    return () => document.removeEventListener('pointerdown', closeOnOutsidePress)
-  }, [open])
-
-  function close() {
-    setOpen(false)
-    triggerRef.current?.focus()
-  }
-
-  function choose(filter: TodayFilter) {
-    onChange(filter)
-    close()
-  }
-
-  function moveFocus(event: ReactKeyboardEvent<HTMLDivElement>) {
-    const items = [...event.currentTarget.querySelectorAll<HTMLElement>('[role="menuitemradio"]')]
-    const index = items.indexOf(document.activeElement as HTMLElement)
-    const target = event.key === 'ArrowDown' ? items[(index + 1) % items.length]
-      : event.key === 'ArrowUp' ? items[(index - 1 + items.length) % items.length]
-      : event.key === 'Home' ? items[0]
-      : event.key === 'End' ? items[items.length - 1]
-      : undefined
-    if (target) {
-      event.preventDefault()
-      target.focus()
-    } else if (event.key === 'Escape') {
-      event.preventDefault()
-      close()
-    } else if (event.key === 'Tab') {
-      setOpen(false)
-    }
-  }
-
-  return (
-    <div className="today-filter" ref={rootRef}>
-      {value !== 'due' && <button className="today-filter-reset" type="button" onClick={() => onChange('due')} aria-label="Reset to show due" title="Show due"><X size={14} /></button>}
-      <button ref={triggerRef} className="today-filter-trigger" type="button" aria-haspopup="menu" aria-expanded={open} aria-controls={open ? menuId : undefined} onClick={() => setOpen((isOpen) => !isOpen)}>
-        <CurrentIcon size={15} aria-hidden="true" />
-        <span className="today-filter-label">{current.label}</span>
-        <ChevronDown size={14} aria-hidden="true" />
-      </button>
-      {open && (
-        <div id={menuId} className="today-filter-menu" role="menu" aria-label="Today filter" onKeyDown={moveFocus}>
-          {TODAY_FILTERS.map(({ filter, option, icon: Icon }) => (
-            <Fragment key={filter}>
-              {filter === 'hide-daily' && <div className="today-filter-separator" role="separator" />}
-              <button type="button" role="menuitemradio" aria-checked={filter === value} tabIndex={-1} onClick={() => choose(filter)}>
-                <Icon size={18} aria-hidden="true" />
-                <span>{option}</span>
-                {filter === value && <Check size={16} aria-hidden="true" />}
-              </button>
-            </Fragment>
-          ))}
-        </div>
-      )}
-    </div>
-  )
 }
 
 function SheetBackdrop({ onClose, children }: { onClose: () => void; children: ReactNode }) {
@@ -1193,48 +1120,18 @@ function formatElapsed(milliseconds: number): string {
   return hours ? `${hours}:${rest}` : rest
 }
 
-// A task with no repeat that is not in the planner only lives in its list, so it has no due date to show.
-function isUnscheduled(task: Task): boolean {
-  return !task.intervalDays && task.scheduledForPlanner !== true
-}
-
-// Done and skipped count anything handled today, wherever it lives, so their effort totals are
-// complete. The other filters narrow the tasks still waiting.
-function tasksForToday(tasks: Task[], activeDay: string, managedEvents: Map<string, TaskEvent>, filter: TodayFilter): Task[] {
+// Done and skipped count anything handled today that belongs in the view, wherever it lives, so
+// their effort totals are complete. The other filters narrow the tasks still waiting.
+function tasksForView(tasks: Task[], view: PlannerView, activeDate: Date, managedEvents: Map<string, TaskEvent>, filter: PlannerFilter): Task[] {
+  const start = dateKey(activeDate)
+  const managedIds = new Set(managedEvents.keys())
   return tasks
+    .filter((task) => fitsView(task, view))
     .filter((task) => {
       const action = managedEvents.get(task.id)?.action
       if (filter === 'done') return action === 'completed'
       if (filter === 'skipped') return action === 'skipped' || action === 'delayed'
-      return !action && !task.projectId && isWaitingToday(task, activeDay, filter)
-    })
-    .sort((left, right) => (preferredTimeFor(left, activeDay) ?? '99:99').localeCompare(preferredTimeFor(right, activeDay) ?? '99:99') || left.position - right.position)
-}
-
-function isWaitingToday(task: Task, activeDay: string, filter: TodayFilter): boolean {
-  if (task.archived || task.nextDueAt > activeDay) return false
-  if (!task.intervalDays && task.scheduledForPlanner !== true) return false
-  if (filter === 'hide-daily' && task.intervalDays === 1) return false
-  if (filter === 'hide-recurring' && task.intervalDays) return false
-  return true
-}
-
-function tasksForView(tasks: Task[], view: 'week' | 'month', activeDate: Date, managedIds: Set<string>, showCompleted: boolean): Task[] {
-  const start = dateKey(activeDate)
-  const end = dateKey(addDays(activeDate, view === 'week' ? 7 : 31))
-  return tasks
-    .filter((task) => !task.projectId)
-    .filter((task) => Boolean(task.intervalDays) || task.scheduledForPlanner === true)
-    .filter((task) => !task.archived || (showCompleted && managedIds.has(task.id)))
-    .filter((task) => {
-      if (view === 'week') {
-        if (task.intervalDays && task.intervalDays < 7) return false
-        if (managedIds.has(task.id)) return showCompleted
-        return task.nextDueAt > start && task.nextDueAt <= end
-      }
-      if (task.intervalDays && task.intervalDays < 28) return false
-      if (managedIds.has(task.id)) return showCompleted
-      return task.nextDueAt > start && task.nextDueAt <= end
+      return !action && !task.projectId && isWaiting(task, view, activeDate, filter)
     })
     .sort((left, right) => {
       const leftDate = plannedDate(left, view, start, managedIds)
@@ -1245,24 +1142,31 @@ function tasksForView(tasks: Task[], view: 'week' | 'month', activeDate: Date, m
     })
 }
 
+// Week and Month leave out what repeats too often to plan that far ahead.
+function fitsView(task: Task, view: PlannerView): boolean {
+  if (view === 'week') return !task.intervalDays || task.intervalDays >= 7
+  if (view === 'month') return !task.intervalDays || task.intervalDays >= 28
+  return true
+}
+
+// A planner task not yet handled that falls due in the view's range, less whatever the filter hides.
+function isWaiting(task: Task, view: PlannerView, activeDate: Date, filter: PlannerFilter): boolean {
+  const start = dateKey(activeDate)
+  if (task.archived || isUnscheduled(task)) return false
+  if (filter === 'hide-daily' && task.intervalDays === 1) return false
+  if (filter === 'hide-recurring' && task.intervalDays) return false
+  if (view === 'today') return task.nextDueAt <= start
+  return task.nextDueAt > start && task.nextDueAt <= dateKey(addDays(activeDate, view === 'week' ? 7 : 31))
+}
+
 // The day a task is listed under: everything on Today shares the active day, and a task already
 // handled today stays with today rather than jumping to its next due date.
 function plannedDate(task: Task, view: PlannerView, activeDay: string, managedIds: Set<string>): string {
   return view === 'today' || managedIds.has(task.id) ? activeDay : task.nextDueAt
 }
 
-function tasksForProjectView(tasks: Task[], projectId: string, view: PlannerView, activeDate: Date, managedIds: Set<string>, todayFilter: TodayFilter): Task[] {
-  const start = dateKey(activeDate)
-  const end = dateKey(addDays(activeDate, view === 'week' ? 7 : 31))
-  return tasks
-    .filter((task) => task.projectId === projectId && !task.archived && !managedIds.has(task.id))
-    .filter((task) => Boolean(task.intervalDays) || task.scheduledForPlanner === true)
-    .filter((task) => {
-      if (view === 'today') return isWaitingToday(task, start, todayFilter)
-      if (view === 'week' && task.intervalDays && task.intervalDays < 7) return false
-      if (view === 'month' && task.intervalDays && task.intervalDays < 28) return false
-      return task.nextDueAt > start && task.nextDueAt <= end
-    })
+function tasksForProjectView(tasks: Task[], projectId: string, view: PlannerView, activeDate: Date, managedIds: Set<string>, filter: PlannerFilter): Task[] {
+  return tasks.filter((task) => task.projectId === projectId && !managedIds.has(task.id) && fitsView(task, view) && isWaiting(task, view, activeDate, filter))
 }
 
 function formatDayGroup(value: string, activeDay: string): string {

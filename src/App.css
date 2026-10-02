@@ -53,18 +53,19 @@ main { --gutter: 24px; flex: 1; min-height: 0; display: flex; flex-direction: co
 .new-day small { color: var(--muted); }
 .section-label { min-height: 34px; display: flex; align-items: center; justify-content: space-between; color: var(--muted); font-size: 12px; font-weight: 700; text-transform: uppercase; }
 .section-label label { display: flex; align-items: center; gap: 6px; text-transform: none; font-weight: 600; }
-.today-filter { position: relative; display: flex; align-items: center; gap: 4px; text-transform: none; }
-.today-filter-reset { width: 26px; height: 26px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 13px; color: var(--muted); background: var(--panel-muted); }
-.today-filter-reset:hover { color: var(--ink); background: var(--blue-100); }
-.today-filter-trigger { min-height: 32px; display: flex; align-items: center; gap: 5px; padding: 4px 2px 4px 6px; border: 0; border-radius: 4px; color: var(--blue-700); background: transparent; font-size: 12px; font-weight: 700; }
-.today-filter-trigger > svg:last-child { transition: rotate 150ms ease-out; }
-.today-filter-trigger[aria-expanded='true'] > svg:last-child { rotate: 180deg; }
-.today-filter-menu { position: absolute; top: calc(100% + 4px); right: 0; z-index: 6; min-width: 220px; display: grid; gap: 2px; padding: 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); box-shadow: 0 12px 30px var(--shadow-color); animation: menu-in 120ms ease-out; }
-.today-filter-menu button { min-height: 46px; display: grid; grid-template-columns: 20px 1fr 16px; align-items: center; gap: 12px; padding: 0 12px; border: 0; border-radius: 5px; color: var(--ink); background: transparent; font: 600 15px/1.2 var(--body); text-align: left; }
-.today-filter-menu button > svg:first-child { color: var(--blue-600); }
-.today-filter-menu button:hover, .today-filter-menu button:focus-visible { outline: 0; background: var(--panel-muted); }
-.today-filter-menu button[aria-checked='true'] { color: var(--blue-700); background: var(--blue-50); }
-.today-filter-separator { height: 1px; margin: 4px 8px; background: var(--line); }
+.filter-menu { position: relative; display: flex; align-items: center; gap: 4px; text-transform: none; }
+.filter-menu-reset { width: 26px; height: 26px; flex: none; display: grid; place-items: center; padding: 0; border: 0; border-radius: 13px; color: var(--muted); background: var(--panel-muted); }
+.filter-menu-reset:hover { color: var(--ink); background: var(--blue-100); }
+.filter-menu-trigger { min-height: 32px; display: flex; align-items: center; gap: 5px; padding: 4px 2px 4px 6px; border: 0; border-radius: 4px; color: var(--blue-700); background: transparent; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.filter-menu-trigger > svg:last-child { transition: rotate 150ms ease-out; }
+.filter-menu-trigger[aria-expanded='true'] > svg:last-child { rotate: 180deg; }
+.filter-menu-popup { position: absolute; top: calc(100% + 4px); right: 0; z-index: 6; min-width: 220px; display: grid; gap: 2px; padding: 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); box-shadow: 0 12px 30px var(--shadow-color); animation: menu-in 120ms ease-out; }
+.filter-menu-popup button { min-height: 46px; display: grid; grid-template-columns: 20px 1fr 16px; align-items: center; gap: 12px; padding: 0 12px; border: 0; border-radius: 5px; color: var(--ink); background: transparent; font: 600 15px/1.2 var(--body); text-align: left; }
+.filter-menu-popup button > svg:first-child { color: var(--blue-600); }
+.filter-menu-popup button > span { white-space: nowrap; }
+.filter-menu-popup button:hover, .filter-menu-popup button:focus-visible { outline: 0; background: var(--panel-muted); }
+.filter-menu-popup button[aria-checked='true'] { color: var(--blue-700); background: var(--blue-50); }
+.filter-menu-separator { height: 1px; margin: 4px 8px; background: var(--line); }
 @keyframes menu-in { from { opacity: 0; translate: 0 -4px; } }
 .task-list { border-top: 1px solid var(--line); overflow-x: clip; } /* keeps a sliding row from adding a horizontal scrollbar */
 /* Side lines live on the rows (and dividers) rather than the list, so they leave with a completed row. */
@@ -184,8 +185,7 @@ main { --gutter: 24px; flex: 1; min-height: 0; display: flex; flex-direction: co
 .list-index-actions button { display: flex; align-items: center; justify-content: center; gap: 7px; min-height: 38px; padding: 8px 12px; border: 1px solid var(--blue-200); border-radius: 5px; color: var(--blue-700); background: var(--panel); font-weight: 700; }
 .task-search-toolbar { min-height: 46px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; margin-bottom: 16px; padding: 0 12px; border: 1px solid var(--blue-200); border-radius: 6px; color: var(--blue-600); background: var(--panel); box-shadow: 0 5px 18px var(--shadow-soft); }
 .task-search-toolbar > input { min-width: 0; border: 0; outline: 0; color: var(--ink); background: transparent; }
-.task-search-toolbar > label { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; font-weight: 700; white-space: nowrap; }
-.task-search-toolbar > label input { width: 17px; height: 17px; margin: 0; accent-color: var(--blue-600); }
+.task-search-toolbar .filter-menu-popup { top: calc(100% + 10px); }
 .task-search-results { margin: 0 0 20px; border: 1px solid var(--line); background: var(--panel); }
 .task-search-results .section-label { padding: 0 12px; border-bottom: 1px solid var(--line); background: var(--panel-muted); }
 .task-search-result { min-height: 58px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 0 10px 0 4px; border-bottom: 1px solid var(--line); }
@@ -337,8 +337,8 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
   .list-title-actions button { min-height: 34px; padding: 6px 9px; font-size: 12px; }
   .list-index-actions { flex-direction: column-reverse; }
   .list-index-actions button { min-height: 34px; padding: 6px 9px; font-size: 12px; }
-  .task-search-toolbar { grid-template-columns: auto minmax(0, 1fr); padding-block: 8px; }
-  .task-search-toolbar > label { grid-column: 2; }
+  .task-search-toolbar { grid-template-columns: auto minmax(0, 1fr); row-gap: 2px; padding-block: 6px; }
+  .task-search-toolbar .filter-menu { grid-column: 1 / -1; justify-self: end; }
   .task-search-result { padding-right: 5px; }
   .task-search-actions > span { display: none; }
   .inline-create { grid-template-columns: auto minmax(0, 1fr) auto; }

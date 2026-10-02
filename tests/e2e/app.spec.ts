@@ -287,7 +287,7 @@ test('filters Today to due, done or skipped tasks, or hides daily and recurring 
   await expect(effort).toHaveText('5')
 
   await filterToday(page, 'Hide daily')
-  await expect(page.locator('.today-filter-label')).toHaveText('Hiding daily')
+  await expect(page.locator('.section-label .filter-menu-label')).toHaveText('Hiding daily')
   await expect(titles).toHaveText(['Filter once', 'Filter weekly'])
   await expect(effort).toHaveText('2')
   await filterToday(page, 'Hide recurring')
@@ -300,26 +300,26 @@ test('filters Today to due, done or skipped tasks, or hides daily and recurring 
   await page.getByRole('button', { name: 'Delay Tidy up' }).click()
 
   await filterToday(page, 'Show done')
-  await expect(page.locator('.today-filter-label')).toHaveText('Showing done')
+  await expect(page.locator('.section-label .filter-menu-label')).toHaveText('Showing done')
   await expect(titles).toHaveText(['Filter once'])
   await expect(effort).toHaveText('1')
   await filterToday(page, 'Show skipped')
-  await expect(page.locator('.today-filter-label')).toHaveText('Showing skipped')
+  await expect(page.locator('.section-label .filter-menu-label')).toHaveText('Showing skipped')
   await expect(titles).toHaveText(['Tidy up'])
   await expect(effort).toHaveText('2')
   await filterToday(page, 'Show due')
-  await expect(page.locator('.today-filter-label')).toHaveText('Showing due')
+  await expect(page.locator('.section-label .filter-menu-label')).toHaveText('Showing due')
   await expect(effort).toHaveText('2')
   await expect(page.getByRole('button', { name: 'Reset to show due' })).toHaveCount(0)
 
   // The x beside a filter returns to Show due.
   await filterToday(page, 'Show done')
   await page.getByRole('button', { name: 'Reset to show due' }).click()
-  await expect(page.locator('.today-filter-label')).toHaveText('Showing due')
+  await expect(page.locator('.section-label .filter-menu-label')).toHaveText('Showing due')
   await expect(page.getByRole('button', { name: 'Reset to show due' })).toHaveCount(0)
 
   // The menu marks the current filter, works from the keyboard and closes on an outside press.
-  const trigger = page.locator('.today-filter-trigger')
+  const trigger = page.locator('.section-label .filter-menu-trigger')
   await trigger.click()
   const menu = page.getByRole('menu', { name: 'Today filter' })
   await expect(menu.getByRole('menuitemradio', { name: 'Show due' })).toHaveAttribute('aria-checked', 'true')
@@ -327,7 +327,7 @@ test('filters Today to due, done or skipped tasks, or hides daily and recurring 
   await page.keyboard.press('ArrowDown')
   await page.keyboard.press('ArrowDown')
   await page.keyboard.press('Enter')
-  await expect(page.locator('.today-filter-label')).toHaveText('Showing skipped')
+  await expect(page.locator('.section-label .filter-menu-label')).toHaveText('Showing skipped')
   await expect(trigger).toBeFocused()
   await trigger.click()
   await page.keyboard.press('Escape')
@@ -337,11 +337,57 @@ test('filters Today to due, done or skipped tasks, or hides daily and recurring 
   await expect(menu).toHaveCount(0)
 })
 
+// Picks a planner filter (Today, Week or Month, whichever is showing).
 async function filterToday(page: Page, option: string) {
-  await page.locator('.today-filter-trigger').click()
-  await page.getByRole('menu', { name: 'Today filter' }).getByRole('menuitemradio', { name: option }).click()
+  await page.locator('.section-label .filter-menu-trigger').click()
+  await page.getByRole('menu').getByRole('menuitemradio', { name: option }).click()
   await expect(page.getByRole('menu')).toHaveCount(0)
 }
+
+async function filterTaskSearch(page: Page, option: string) {
+  await page.locator('.task-search-toolbar .filter-menu-trigger').click()
+  await page.getByRole('menu', { name: 'Task search filter' }).getByRole('menuitemradio', { name: option }).click()
+  await expect(page.getByRole('menu')).toHaveCount(0)
+}
+
+test('filters Week and Month on their own, without the daily option', async ({ page }) => {
+  const now = new Date()
+  const inThreeDays = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 3, 12)
+  const entry = page.getByRole('textbox', { name: 'New task' })
+  for (const title of ['Weekly chore 7d', `Next week thing ${inThreeDays.getMonth() + 1}/${inThreeDays.getDate()}`]) {
+    await entry.fill(title)
+    await entry.press('Enter')
+    await expect(entry).toHaveValue('')
+  }
+  await page.getByRole('button', { name: 'Complete Weekly chore' }).click()
+  await expect(page.getByRole('button', { name: 'Complete Weekly chore' })).toHaveCount(0)
+  await filterToday(page, 'Show done')
+
+  await page.getByLabel('Planning range').getByRole('button', { name: 'Week' }).click()
+  const label = page.locator('.section-label .filter-menu-label')
+  const titles = page.locator('.task-list .task-title')
+  await expect(label).toHaveText('Showing due')
+  await expect(page.getByRole('button', { name: 'Reset to show due' })).toHaveCount(0)
+  await expect(titles.filter({ hasText: 'Next week thing' })).toHaveCount(1)
+  await expect(titles.filter({ hasText: 'Weekly chore' })).toHaveCount(0)
+
+  await page.locator('.section-label .filter-menu-trigger').click()
+  await expect(page.getByRole('menu', { name: 'Week filter' }).getByRole('menuitemradio')).toHaveText(['Show due', 'Show done', 'Show skipped', 'Hide recurring'])
+  await page.keyboard.press('Escape')
+
+  await filterToday(page, 'Show done')
+  await expect(titles).toHaveText(['Weekly chore'])
+  await expect(page.locator('.effort-meter strong')).toHaveText('1')
+  await filterToday(page, 'Hide recurring')
+  await expect(titles).toHaveText(['Next week thing'])
+  await page.getByRole('button', { name: 'Reset to show due' }).click()
+  await expect(label).toHaveText('Showing due')
+
+  await page.getByLabel('Planning range').getByRole('button', { name: 'Month' }).click()
+  await expect(label).toHaveText('Showing due')
+  await page.getByLabel('Planning range').getByRole('button', { name: 'Today' }).click()
+  await expect(label).toHaveText('Showing done')
+})
 
 async function storedTask(page: Page, title: string) {
   return page.evaluate(async (taskTitle) => {
@@ -604,7 +650,7 @@ test('adds a pending entry when focus leaves the quick-add box', async ({ page }
   await page.getByRole('combobox', { name: 'Task list' }).focus()
   await expect(page.getByText('Blur added task', { exact: true })).toHaveCount(0)
   await entry.focus()
-  await page.locator('.today-filter-trigger').focus()
+  await page.locator('.section-label .filter-menu-trigger').focus()
   await expect(page.getByText('Blur added task', { exact: true })).toBeVisible()
   await expect(entry).toHaveValue('')
   expect(await entry.getAttribute('maxlength')).toBe('300')
@@ -939,14 +985,15 @@ test('searches every list and manages archived task results', async ({ page }) =
   await page.locator('.list-breadcrumbs').getByRole('button', { name: 'Lists' }).click()
 
   const search = page.getByRole('textbox', { name: 'Search all tasks' })
-  await page.getByRole('checkbox', { name: 'Show archived' }).check()
+  await filterTaskSearch(page, 'Show archived')
   await expect(page.getByRole('button', { name: 'Restore Archived search target' })).toBeVisible()
-  await page.getByRole('checkbox', { name: 'Show archived' }).uncheck()
+  await filterTaskSearch(page, 'Show all')
   await search.fill('Archived search target')
   await expect(page.getByText('No matching tasks.')).toBeVisible()
-  await page.getByRole('checkbox', { name: 'Show archived' }).check()
+  await filterTaskSearch(page, 'Show archived')
   await expect(page.getByText('Archived search target')).toBeVisible()
   await page.getByRole('button', { name: 'Restore Archived search target' }).click()
+  await filterTaskSearch(page, 'Show all')
   await expect(page.getByRole('button', { name: 'Open Archived search target' })).toBeEnabled()
 
   await page.getByRole('button', { name: 'Open Archived search target' }).click()
@@ -954,9 +1001,51 @@ test('searches every list and manages archived task results', async ({ page }) =
   await page.getByRole('button', { name: 'Archive task' }).click()
   await page.locator('.list-breadcrumbs').getByRole('button', { name: 'Lists' }).click()
   await page.getByRole('textbox', { name: 'Search all tasks' }).fill('Archived search target')
-  await page.getByRole('checkbox', { name: 'Show archived' }).check()
+  await filterTaskSearch(page, 'Show archived')
   await page.getByRole('button', { name: 'Delete Archived search target permanently' }).click()
   await expect(page.getByText('Archived search target')).not.toBeVisible()
+})
+
+test('filters the task search by due, unscheduled, done and archived, and clears it from the x', async ({ page }) => {
+  await page.getByRole('button', { name: 'Complete Tidy up' }).click()
+  await expect(page.getByRole('button', { name: 'Complete Tidy up' })).toHaveCount(0)
+  await page.getByLabel('Planning range').getByRole('button', { name: 'Lists' }).click()
+  await page.locator('.list-grid').getByRole('button', { name: /^Household\b/ }).click()
+  await page.getByRole('textbox', { name: 'Add task to Todo' }).fill('Someday idea')
+  await page.getByRole('textbox', { name: 'Add task to Todo' }).press('Enter')
+  await expect(page.getByRole('button', { name: 'Someday idea', exact: true })).toBeVisible()
+  await page.locator('.list-breadcrumbs').getByRole('button', { name: 'Lists' }).click()
+
+  const results = page.getByRole('region', { name: 'Task search results' })
+  const clear = page.getByRole('button', { name: 'Clear search' })
+  await expect(results).toHaveCount(0)
+  await expect(clear).toHaveCount(0)
+
+  await filterTaskSearch(page, 'Show unscheduled')
+  await expect(page.locator('.task-search-toolbar .filter-menu-label')).toHaveText('Showing unscheduled')
+  await expect(results.getByRole('button', { name: 'Open Someday idea' })).toBeVisible()
+  await expect(results.getByRole('button', { name: 'Open Do laundry' })).toHaveCount(0)
+
+  await filterTaskSearch(page, 'Show done')
+  await expect(results.getByRole('button', { name: 'Open Tidy up' })).toBeVisible()
+  await expect(results.getByRole('button', { name: 'Open Someday idea' })).toHaveCount(0)
+
+  await filterTaskSearch(page, 'Show due')
+  await expect(results.getByRole('button', { name: 'Open Do laundry' })).toBeVisible()
+  await expect(results.getByRole('button', { name: 'Open Tidy up' })).toHaveCount(0)
+  await expect(results.getByRole('button', { name: 'Open Someday idea' })).toHaveCount(0)
+  const search = page.getByRole('textbox', { name: 'Search all tasks' })
+  await search.fill('laundry')
+  await expect(results.locator('.task-search-result')).toHaveCount(1)
+
+  // The x sits after the filter and clears both the text and the filter.
+  await clear.click()
+  await expect(search).toHaveValue('')
+  await expect(page.locator('.task-search-toolbar .filter-menu-label')).toHaveText('Showing all')
+  await expect(results).toHaveCount(0)
+  await expect(clear).toHaveCount(0)
+  await search.fill('laundry')
+  await expect(clear).toBeVisible()
 })
 
 test('exports every local data store as a JSON backup', async ({ page }) => {

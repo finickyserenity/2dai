@@ -1,13 +1,18 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import {
+  Archive,
   ArrowDown,
   ArrowLeft,
   ArrowUp,
   Check,
   ChevronRight,
   Pencil,
+  CircleCheckBig,
   FolderKanban,
+  Hourglass,
   Import,
+  Inbox,
+  Layers,
   MoreHorizontal,
   Plus,
   RotateCcw,
@@ -19,8 +24,9 @@ import { db } from './db'
 import { keepEntryFocus, submitOnLeave } from './forms'
 import { useLongPress } from './longPress'
 import { createId } from './id'
+import { FilterMenu, type FilterOption } from './FilterMenu'
 import { ImportListDialog } from './ImportListDialog.tsx'
-import { isWeekend, parseTaskInput, TITLE_MAX_LENGTH, type ProjectFolder, type Task, type TaskAction, type TaskList, type TaskSection } from './domain'
+import { isUnscheduled, isWeekend, parseTaskInput, TITLE_MAX_LENGTH, type ProjectFolder, type Task, type TaskAction, type TaskList, type TaskSection } from './domain'
 
 interface ListWorkspaceProps {
   lists: TaskList[]
@@ -73,7 +79,7 @@ export function ListWorkspace({
   }, [focusedTaskId, focusRequest, initialListId, initialProjectId])
 
   if (!activeList) {
-    return <ListIndex lists={lists} sections={sections} tasks={tasks} projects={projects} onOpen={onLocationChange} onOpenTask={onOpenTask} />
+    return <ListIndex lists={lists} sections={sections} tasks={tasks} projects={projects} activeDay={activeDay} onOpen={onLocationChange} onOpenTask={onOpenTask} />
   }
 
   const activeListId = activeList.id
@@ -270,15 +276,15 @@ export function ListWorkspace({
   )
 }
 
-function ListIndex({ lists, sections, tasks, projects, onOpen, onOpenTask }: { lists: TaskList[]; sections: TaskSection[]; tasks: Task[]; projects: ProjectFolder[]; onOpen: (listId: string) => void; onOpenTask: (task: Task) => void }) {
+function ListIndex({ lists, sections, tasks, projects, activeDay, onOpen, onOpenTask }: { lists: TaskList[]; sections: TaskSection[]; tasks: Task[]; projects: ProjectFolder[]; activeDay: string; onOpen: (listId: string) => void; onOpenTask: (task: Task) => void }) {
   const [creating, setCreating] = useState(false)
   const [importing, setImporting] = useState(false)
   const [name, setName] = useState('')
   const [taskSearch, setTaskSearch] = useState('')
-  const [showArchived, setShowArchived] = useState(false)
+  const [searchFilter, setSearchFilter] = useState<TaskSearchFilter>('all')
   const normalizedSearch = taskSearch.trim().toLocaleLowerCase()
   const matchingTasks = tasks
-    .filter((task) => normalizedSearch ? showArchived || !task.archived : showArchived && task.archived)
+    .filter((task) => matchesSearchFilter(task, searchFilter, activeDay))
     .filter((task) => !normalizedSearch || task.title.toLocaleLowerCase().includes(normalizedSearch))
     .sort((left, right) => left.title.localeCompare(right.title, undefined, { sensitivity: 'base', numeric: true }))
   const listById = new Map(lists.map((list) => [list.id, list]))
@@ -327,9 +333,15 @@ function ListIndex({ lists, sections, tasks, projects, onOpen, onOpenTask }: { l
       <div className="task-search-toolbar">
         <Search size={18} aria-hidden="true" />
         <input value={taskSearch} onChange={(event) => setTaskSearch(event.target.value)} placeholder="Search tasks across all lists" aria-label="Search all tasks" />
-        <label><input type="checkbox" checked={showArchived} onChange={(event) => setShowArchived(event.target.checked)} /> Show archived</label>
+        <FilterMenu
+          label="Task search filter"
+          options={TASK_SEARCH_FILTERS}
+          value={searchFilter}
+          onChange={setSearchFilter}
+          reset={normalizedSearch || searchFilter !== 'all' ? { label: 'Clear search', side: 'end', onReset: () => { setTaskSearch(''); setSearchFilter('all') } } : undefined}
+        />
       </div>
-      {(normalizedSearch || showArchived) && (
+      {(normalizedSearch || searchFilter !== 'all') && (
         <section className="task-search-results" aria-label="Task search results">
           <div className="section-label"><span>{matchingTasks.length} {matchingTasks.length === 1 ? 'result' : 'results'}</span></div>
           {matchingTasks.map((task) => {
@@ -352,7 +364,7 @@ function ListIndex({ lists, sections, tasks, projects, onOpen, onOpenTask }: { l
               </article>
             )
           })}
-          {!matchingTasks.length && <div className="task-search-empty">{normalizedSearch ? 'No matching tasks.' : 'No archived tasks.'}</div>}
+          {!matchingTasks.length && <div className="task-search-empty">{normalizedSearch ? 'No matching tasks.' : `No ${searchFilter} tasks.`}</div>}
         </section>
       )}
       <div className="list-grid">
@@ -492,10 +504,10 @@ function SheetSection({ section, name, tasks, sectionTasks = [], focusedTaskId, 
           {tasks.map((task, index) => {
             const isManaged = managedTaskIds.has(task.id)
             const isNotDue = task.nextDueAt > activeDay
-            const isUnscheduled = !task.intervalDays && task.scheduledForPlanner !== true
+            const unscheduled = isUnscheduled(task)
             return (
             <div id={`task-${task.id}`} className={`raw-task-row${isManaged ? ' managed' : ''}${isNotDue ? ' not-due' : ''}${focusedTaskId === task.id ? ' focused' : ''}`} key={focusedTaskId === task.id ? `${task.id}:${focusRequest}` : task.id}>
-              {isUnscheduled
+              {unscheduled
                 ? <button className="raw-check raw-schedule" type="button" onClick={() => scheduleTask(task)} aria-label={`Add ${task.title} to Today`} title="Add to Today"><Plus size={16} /></button>
                 : <button className="raw-check" type="button" onClick={() => onManage(task, 'completed')} aria-pressed={isManaged} aria-label={`${isManaged ? 'Uncheck' : 'Complete'} ${task.title}`}><Check size={16} /></button>}
               <TaskName title={task.title} onOpen={() => onEdit(task.id)} onActions={() => onActions(task.id)} />
@@ -542,6 +554,29 @@ async function addListTask(entry: string, { listId, projectId, sectionId }: { li
       createdAt: now, updatedAt: now,
     })
   })
+  return true
+}
+
+type TaskSearchFilter = 'all' | 'due' | 'unscheduled' | 'done' | 'archived'
+
+const TASK_SEARCH_FILTERS: Array<FilterOption<TaskSearchFilter>> = [
+  { value: 'all', option: 'Show all', label: 'Showing all', icon: Layers, group: 'all' },
+  { value: 'due', option: 'Show due', label: 'Showing due', icon: Hourglass, group: 'state' },
+  { value: 'unscheduled', option: 'Show unscheduled', label: 'Showing unscheduled', icon: Inbox, group: 'state' },
+  { value: 'done', option: 'Show done', label: 'Showing done', icon: CircleCheckBig, group: 'state' },
+  { value: 'archived', option: 'Show archived', label: 'Showing archived', icon: Archive, group: 'archived' },
+]
+
+// All covers every task still in its list. Due tasks have a date still to meet, done tasks were
+// checked off and are not due again yet (a finished one-off is also archived), and unscheduled
+// tasks have no date at all.
+function matchesSearchFilter(task: Task, filter: TaskSearchFilter, activeDay: string): boolean {
+  const isDone = Boolean(task.lastCompletedAt) && (task.archived || task.nextDueAt > activeDay)
+  if (filter === 'archived') return task.archived
+  if (filter === 'done') return isDone
+  if (task.archived) return false
+  if (filter === 'due') return !isUnscheduled(task) && !isDone
+  if (filter === 'unscheduled') return isUnscheduled(task)
   return true
 }
 
