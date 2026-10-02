@@ -30,7 +30,8 @@ test('customizes and persists the header name', async ({ page }) => {
   const name = page.getByRole('textbox', { name: 'Header name' })
   await name.fill('Alex')
   await name.press('Enter')
-  await expect(page.getByRole('heading', { name: 'Alex' })).toBeVisible()
+  // While the field is open the heading already reads "Alex"; the button only returns once the name is saved.
+  await expect(page.getByRole('button', { name: 'Change name Alex' })).toBeVisible()
 
   await page.reload()
   await expect(page.getByRole('heading', { name: 'Alex' })).toBeVisible()
@@ -534,6 +535,10 @@ test('leaves no pressed look on the next row after delaying a task on touch devi
 
 test('keeps the next checkbox inactive after completing a task on touch devices', async ({ page, isMobile }) => {
   test.skip(!isMobile, 'Touch hover regression')
+  // Midday keeps the default "dark at night" theme light, so the white checkbox is the expected one.
+  const now = new Date()
+  await page.clock.install({ time: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12) })
+  await page.reload()
 
   const entry = page.getByRole('textbox', { name: 'New task' })
   await entry.fill('First touch task')

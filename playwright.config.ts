@@ -20,6 +20,9 @@ export default defineConfig({
   webServer: {
     command: 'npm run dev -- --host 127.0.0.1 --port 4173',
     url: 'http://127.0.0.1:4173',
+    // A local certs/ pair would switch the dev server to HTTPS, and Playwright would wait on the
+    // http URL above forever. An empty path makes vite.config.ts skip TLS for test runs.
+    env: { DEV_TLS_CERT: '' },
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
   },

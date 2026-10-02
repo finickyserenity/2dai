@@ -10,6 +10,7 @@ import {
   extractLinks,
   extractPhoneNumbers,
   formatFriendlyDate,
+  isUnscheduled,
   isWeekend,
   nextAllowedDueDate,
   nextDueDate,
@@ -177,6 +178,23 @@ describe('due date filters', () => {
   it('finds the first allowed date on or after a proposed due date', () => {
     expect(nextAllowedDueDate('2026-09-17', 'monday, q4')).toBe('2026-10-05')
     expect(nextAllowedDueDate('2026-09-17', '14th spring')).toBe('2027-03-14')
+  })
+
+  it('keeps the proposed date when no date can ever satisfy the filters', () => {
+    expect(nextAllowedDueDate('2026-09-17', 'feb 30th')).toBe('2026-09-17')
+  })
+})
+
+describe('isUnscheduled', () => {
+  it('treats a one-time task kept out of the planner as unscheduled', () => {
+    expect(isUnscheduled(task())).toBe(true)
+    expect(isUnscheduled(task({ scheduledForPlanner: false }))).toBe(true)
+  })
+
+  it('treats repeating or planner-scheduled tasks as scheduled', () => {
+    expect(isUnscheduled(task({ scheduledForPlanner: true }))).toBe(false)
+    expect(isUnscheduled(task({ intervalDays: 7 }))).toBe(false)
+    expect(isUnscheduled(task({ intervalDays: 7, scheduledForPlanner: false }))).toBe(false)
   })
 })
 describe('delayTargetDate', () => {
