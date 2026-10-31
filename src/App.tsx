@@ -56,6 +56,7 @@ import {
   isDarkHours,
   isTracking,
   isWeekend,
+  effectiveDueDate,
   nextAllowedDueDate,
   nextDueDate,
   nextThemeChange,
@@ -837,7 +838,7 @@ function App({ onRefreshApp }: AppProps) {
                   const list = listById.get(task.listId)
                   const managedAction = managedEvents.get(task.id)?.action
                   const isManaged = Boolean(managedAction)
-                  const isNotDue = task.nextDueAt > snapshot.activeDay
+                  const isNotDue = effectiveDueDate(task, snapshot.activeDay) > snapshot.activeDay
                   const preferredTime = preferredTimeFor(task, groupDate)
                   const isRare = (view === 'week' || view === 'month') && (!task.intervalDays || task.intervalDays >= 180)
                   const leavingHeight = leavingRows[task.id]
@@ -1164,14 +1165,15 @@ function isWaiting(task: Task, view: PlannerView, activeDate: Date, filter: Plan
   if (task.archived || isUnscheduled(task)) return false
   if (filter === 'hide-daily' && task.intervalDays === 1) return false
   if (filter === 'hide-recurring' && task.intervalDays) return false
-  if (view === 'today') return task.nextDueAt <= start
-  return task.nextDueAt > start && task.nextDueAt <= dateKey(addDays(activeDate, view === 'week' ? 7 : 31))
+  const due = effectiveDueDate(task, start)
+  if (view === 'today') return due <= start
+  return due > start && due <= dateKey(addDays(activeDate, view === 'week' ? 7 : 31))
 }
 
 // The day a task is listed under: everything on Today shares the active day, and a task already
 // handled today stays with today rather than jumping to its next due date.
 function plannedDate(task: Task, view: PlannerView, activeDay: string, managedIds: Set<string>): string {
-  return view === 'today' || managedIds.has(task.id) ? activeDay : task.nextDueAt
+  return view === 'today' || managedIds.has(task.id) ? activeDay : effectiveDueDate(task, activeDay)
 }
 
 function tasksForProjectView(tasks: Task[], projectId: string, view: PlannerView, activeDate: Date, managedIds: Set<string>, filter: PlannerFilter): Task[] {

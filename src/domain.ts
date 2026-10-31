@@ -257,6 +257,13 @@ export function nextAllowedDueDate(value: Date | string, filters?: string): stri
   return dateKey(start)
 }
 
+// When a task next comes up as of the active day. One already overdue isn't due on just any day
+// either: it waits for the first day from today that its due filters allow, so a weekday chore
+// missed on Friday comes back on Monday rather than sitting in the weekend.
+export function effectiveDueDate(task: Task, activeDay: string): string {
+  return task.nextDueAt < activeDay ? nextAllowedDueDate(activeDay, task.dueFilters) : task.nextDueAt
+}
+
 export function nextDueDate(task: Task, completedAt: Date): string {
   if (!task.intervalDays) return nextAllowedDueDate(addDays(completedAt, 1), task.dueFilters)
 

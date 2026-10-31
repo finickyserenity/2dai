@@ -646,6 +646,45 @@ test('constrains a task due date with multiple calendar filters', async ({ page 
   await expect(page.getByLabel('Due filters')).toHaveValue('monday, q4')
 })
 
+test('holds an overdue task until a day its due filters allow', async ({ page }) => {
+  const now = new Date()
+  const friday = new Date(now.getFullYear(), now.getMonth(), now.getDate() + ((5 - now.getDay() + 7) % 7 || 7), 12)
+  const startDay = async (date: Date) => {
+    await page.clock.setFixedTime(date)
+    await page.reload()
+    await page.getByRole('button', { name: /Start new day/ }).click()
+  }
+  await page.clock.install({ time: friday })
+
+  // Friday: a weekday chore due today goes undone.
+  await startDay(friday)
+  await page.getByLabel('Planning range').getByRole('button', { name: 'Lists' }).click()
+  await page.locator('.list-grid').getByRole('button', { name: /^Personal\b/ }).click()
+  const entry = page.getByRole('textbox', { name: 'Add task to Todo' })
+  await entry.fill('Weekday chore')
+  await entry.press('Enter')
+  await page.getByRole('button', { name: 'Add Weekday chore to Today' }).click()
+  await page.getByRole('button', { name: 'Options for Weekday chore' }).click()
+  await page.getByLabel('Due filters').fill('weekday')
+  await page.getByRole('button', { name: 'Done' }).click()
+  await page.getByLabel('Planning range').getByRole('button', { name: 'Today' }).click()
+  await expect(page.getByRole('button', { name: 'Complete Weekday chore' })).toBeVisible()
+
+  // Saturday: overdue, but not a weekday, so it waits for Monday in Week instead of showing Today.
+  await startDay(addDays(friday, 1))
+  await expect(page.getByRole('button', { name: 'Complete Tidy up' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Complete Weekday chore' })).toHaveCount(0)
+  await page.getByLabel('Planning range').getByRole('button', { name: 'Week' }).click()
+  const monday = new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'short', day: 'numeric' }).format(addDays(friday, 3))
+  await expect(page.locator('.task-day-divider', { hasText: monday })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Complete Weekday chore' })).toBeVisible()
+
+  // Monday: due again.
+  await startDay(addDays(friday, 3))
+  await page.getByLabel('Planning range').getByRole('button', { name: 'Today' }).click()
+  await expect(page.getByRole('button', { name: 'Complete Weekday chore' })).toBeVisible()
+})
+
 test('edits the title in a growing field and keeps notes on their own tab', async ({ page }) => {
   const entry = page.getByRole('textbox', { name: 'New task' })
   await entry.fill('Notes task')

@@ -7,6 +7,7 @@ import {
   isDarkHours,
   nextThemeChange,
   dueDateMatchesFilters,
+  effectiveDueDate,
   extractLinks,
   extractPhoneNumbers,
   formatFriendlyDate,
@@ -173,6 +174,20 @@ describe('due date filters', () => {
     expect(dueDateMatchesFilters('2026-10-05', 'mon, fri q4')).toBe(true)
     expect(dueDateMatchesFilters('2026-10-06', 'mon, fri q4')).toBe(false)
     expect(dueDateMatchesFilters('2027-01-01', 'mon, fri q4')).toBe(false)
+  })
+
+  it('holds an overdue task until a day its filters allow', () => {
+    const weekdayChore = task({ nextDueAt: '2026-10-30', dueFilters: 'weekday' })
+    expect(effectiveDueDate(weekdayChore, '2026-10-31')).toBe('2026-11-02')
+    expect(effectiveDueDate(weekdayChore, '2026-11-01')).toBe('2026-11-02')
+    expect(effectiveDueDate(weekdayChore, '2026-11-02')).toBe('2026-11-02')
+    expect(effectiveDueDate(task({ nextDueAt: '2026-10-28', dueFilters: 'mon, fri' }), '2026-10-29')).toBe('2026-10-30')
+  })
+
+  it('leaves tasks that are not overdue, or have no filters, on their own dates', () => {
+    expect(effectiveDueDate(task({ nextDueAt: '2026-10-30' }), '2026-10-31')).toBe('2026-10-31')
+    expect(effectiveDueDate(task({ nextDueAt: '2026-11-07', dueFilters: 'weekday' }), '2026-10-31')).toBe('2026-11-07')
+    expect(effectiveDueDate(task({ nextDueAt: '2026-10-31', dueFilters: 'weekday' }), '2026-10-31')).toBe('2026-10-31')
   })
 
   it('finds the first allowed date on or after a proposed due date', () => {

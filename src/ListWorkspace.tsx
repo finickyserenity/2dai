@@ -27,7 +27,7 @@ import { createId } from './id'
 import { FilterMenu, type FilterOption } from './FilterMenu'
 import { GrowingTextarea } from './GrowingTextarea'
 import { ImportListDialog } from './ImportListDialog.tsx'
-import { dateKey, isUnscheduled, isWeekend, parseTaskInput, TITLE_MAX_LENGTH, type ProjectFolder, type Task, type TaskAction, type TaskList, type TaskSection } from './domain'
+import { dateKey, effectiveDueDate, isUnscheduled, isWeekend, parseTaskInput, TITLE_MAX_LENGTH, type ProjectFolder, type Task, type TaskAction, type TaskList, type TaskSection } from './domain'
 
 interface ListWorkspaceProps {
   lists: TaskList[]
@@ -516,7 +516,7 @@ function SheetSection({ section, name, tasks, sectionTasks = [], focusedTaskId, 
           <div className="raw-table-heading"><span>Done</span><span>Task</span><span>Due</span><span>Repeat</span><span /></div>
           {tasks.map((task, index) => {
             const isManaged = managedTaskIds.has(task.id) || Boolean(task.lastCompletedAt && dateKey(new Date(task.lastCompletedAt)) === activeDay)
-            const isNotDue = task.nextDueAt > activeDay
+            const isNotDue = effectiveDueDate(task, activeDay) > activeDay
             const unscheduled = isUnscheduled(task)
             return (
             <div id={`task-${task.id}`} className={`raw-task-row${isManaged ? ' managed' : ''}${isNotDue ? ' not-due' : ''}${focusedTaskId === task.id ? ' focused' : ''}`} key={focusedTaskId === task.id ? `${task.id}:${focusRequest}` : task.id}>
