@@ -583,7 +583,8 @@ function App({ onRefreshApp }: AppProps) {
     setLastCompletedTouched(false)
   }
 
-  async function saveTaskOptions() {
+  // Archiving goes through here too, so edits made in the sheet just before are not lost.
+  async function saveTaskOptions(extra: Partial<Task> = {}) {
     if (selectedTask) {
       const title = taskTitleDraft.replace(/\s+/g, ' ').trim()
       if (!title) return
@@ -594,7 +595,9 @@ function App({ onRefreshApp }: AppProps) {
         if (!lastCompletedDraft) {
           changes.lastCompletedAt = undefined
         } else {
-          const completedAt = new Date(`${lastCompletedDraft}T12:00:00`)
+          // The picker only holds a date, so a completion still on the same day keeps its real time.
+          const keepsTime = selectedTask.lastCompletedAt && dateKey(new Date(selectedTask.lastCompletedAt)) === lastCompletedDraft
+          const completedAt = keepsTime ? new Date(selectedTask.lastCompletedAt!) : new Date(`${lastCompletedDraft}T12:00:00`)
           changes.lastCompletedAt = completedAt.toISOString()
           if (selectedTask.intervalDays) {
             changes.nextDueAt = nextAllowedDueDate(addDays(completedAt, selectedTask.intervalDays), dueFilters)
@@ -603,6 +606,7 @@ function App({ onRefreshApp }: AppProps) {
         }
       }
       if (!changes.nextDueAt) changes.nextDueAt = nextAllowedDueDate(selectedTask.nextDueAt, dueFilters)
+      Object.assign(changes, extra)
       if (Object.keys(changes).length) await updateTask(changes)
     }
     closeTaskOptions()
@@ -932,7 +936,7 @@ function App({ onRefreshApp }: AppProps) {
                 <p className="eyebrow">Task options</p>
                 <GrowingTextarea className="sheet-title-input" aria-label="Title" value={taskTitleDraft} maxLength={TITLE_MAX_LENGTH} placeholder="Task title" onChange={(event) => setTaskTitleDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void saveTaskOptions() } }} />
               </div>
-              <button className="text-button" type="button" disabled={!taskTitleDraft.trim()} onClick={saveTaskOptions}>Done</button>
+              <button className="text-button" type="button" disabled={!taskTitleDraft.trim()} onClick={() => saveTaskOptions()}>Done</button>
             </div>
             <div className="sheet-tabs" role="tablist" aria-label="Task options">
               {OPTIONS_TABS.map(({ tab, label }) => (
@@ -973,7 +977,7 @@ function App({ onRefreshApp }: AppProps) {
             </div>
             <div className="sheet-footer-actions">
               <button type="button" disabled={!taskTitleDraft.trim()} onClick={viewSelectedTaskInList}><LibraryBig size={17} />View list</button>
-              <button className="danger-button" type="button" onClick={async () => { await updateTask({ archived: true }); closeTaskOptions() }}><Archive size={17} />Archive task</button>
+              <button className="danger-button" type="button" disabled={!taskTitleDraft.trim()} onClick={() => saveTaskOptions({ archived: true })}><Archive size={17} />Archive task</button>
             </div>
           </section>
         </div>

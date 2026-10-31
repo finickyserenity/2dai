@@ -94,7 +94,7 @@ export function ListWorkspace({
   const activeProjectTasks = activeProject ? tasks.filter((task) => task.projectId === activeProject.id) : []
   const canDeleteProject = activeProjectTasks.every((task) => task.archived)
   const scopedTasks = tasks
-    .filter((task) => task.listId === activeListId && (!task.archived || managedTaskIds.has(task.id)))
+    .filter((task) => task.listId === activeListId && !task.archived)
     .filter((task) => activeProject ? task.projectId === activeProject.id : !task.projectId)
     .filter((task) => task.title.toLowerCase().includes(search.toLowerCase()))
     .sort((a, b) => a.position - b.position)
@@ -369,7 +369,7 @@ function ListIndex({ lists, sections, tasks, projects, activeDay, onOpen, onOpen
                 </button>
                 {task.archived ? (
                   <div className="task-search-actions">
-                    <span>Archived</span>
+                    <span>{task.lastCompletedAt ? `Done ${completedLabel(task.lastCompletedAt)}` : 'Archived'}</span>
                     <button type="button" onClick={() => restoreTask(task)} title="Restore task" aria-label={`Restore ${task.title}`}><RotateCcw size={17} /></button>
                     <button className="delete" type="button" onClick={() => deleteTask(task)} title="Delete task permanently" aria-label={`Delete ${task.title} permanently`}><Trash2 size={17} /></button>
                   </div>
@@ -600,6 +600,10 @@ function readCollapsedState(key: string): boolean {
 
 function shortDate(value: string): string {
   return new Intl.DateTimeFormat('en-US', { month: 'numeric', day: 'numeric' }).format(new Date(`${value}T12:00:00`))
+}
+
+function completedLabel(value: string): string {
+  return new Intl.DateTimeFormat('en-US', { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(value))
 }
 // A list or project name shown as its page heading and edited in place, like a task title in its
 // options sheet: Enter or leaving the field saves, Escape puts the old name back.

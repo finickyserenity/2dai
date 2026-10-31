@@ -1103,6 +1103,37 @@ test('sorts lists and section options while persisting section display preferenc
   await expect(page.locator('.raw-section-heading > strong')).toHaveText(['Todo', 'Persistent section', 'Alpha 2', 'Alpha 10'])
 })
 
+test('archives a just-finished task without losing its completion time', async ({ page }) => {
+  await page.getByLabel('Planning range').getByRole('button', { name: 'Lists' }).click()
+  await page.locator('.list-grid').getByRole('button', { name: /^Personal\b/ }).click()
+  const entry = page.getByRole('textbox', { name: 'Add task to Todo' })
+  await entry.fill('Finished task')
+  await entry.press('Enter')
+  await page.getByRole('button', { name: 'Add Finished task to Today' }).click()
+  await page.getByRole('button', { name: 'Complete Finished task', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Uncheck Finished task', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  const completedAt = (await storedTask(page, 'Finished task'))?.lastCompletedAt as string
+  expect(completedAt).toBeTruthy()
+
+  // Touching the date-only picker, or renaming in the same visit, must not reset the time to noon.
+  await page.getByRole('button', { name: 'Options for Finished task' }).click()
+  await page.getByLabel('Last completed', { exact: true }).click()
+  await page.getByRole('textbox', { name: 'Title' }).fill('Finished and archived')
+  await page.getByRole('button', { name: 'Archive task' }).click()
+  await expect(page.getByRole('button', { name: 'Finished and archived', exact: true })).toHaveCount(0)
+  await expect.poll(() => storedTask(page, 'Finished and archived').then((task) => [task?.archived, task?.lastCompletedAt])).toEqual([true, completedAt])
+
+  await page.getByLabel('Planning range').getByRole('button', { name: 'Today' }).click()
+  await filterToday(page, 'Show done')
+  await expect(page.getByRole('button', { name: 'Uncheck Finished and archived', exact: true })).toHaveAttribute('aria-pressed', 'true')
+
+  await page.getByLabel('Planning range').getByRole('button', { name: 'Lists' }).click()
+  await page.locator('.list-breadcrumbs').getByRole('button', { name: 'Lists', exact: true }).click()
+  await filterTaskSearch(page, 'Show archived')
+  const doneLabel = new Intl.DateTimeFormat('en-US', { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(completedAt))
+  await expect(page.locator('.task-search-result', { hasText: 'Finished and archived' })).toContainText(`Done ${doneLabel}`)
+})
+
 test('offers only the chosen project folder’s sections when moving a task', async ({ page }) => {
   await page.getByLabel('Planning range').getByRole('button', { name: 'Lists' }).click()
   await page.locator('.list-grid').getByRole('button', { name: /^Household\b/ }).click()
