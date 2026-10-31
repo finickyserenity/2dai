@@ -1103,6 +1103,48 @@ test('sorts lists and section options while persisting section display preferenc
   await expect(page.locator('.raw-section-heading > strong')).toHaveText(['Todo', 'Persistent section', 'Alpha 2', 'Alpha 10'])
 })
 
+test('offers only the chosen project folder’s sections when moving a task', async ({ page }) => {
+  await page.getByLabel('Planning range').getByRole('button', { name: 'Lists' }).click()
+  await page.locator('.list-grid').getByRole('button', { name: /^Household\b/ }).click()
+  await page.getByRole('button', { name: 'New section' }).click()
+  await page.getByRole('textbox', { name: 'Section name' }).fill('Top shelf')
+  await page.getByRole('button', { name: 'Create' }).click()
+  await page.getByRole('button', { name: 'New project' }).click()
+  await page.getByRole('textbox', { name: 'Project folder name' }).fill('Garage')
+  await page.getByRole('button', { name: 'Create' }).click()
+  await expect(page.locator('.list-breadcrumbs')).toContainText('Garage')
+  await page.getByRole('button', { name: 'New section' }).click()
+  await page.getByRole('textbox', { name: 'Section name' }).fill('Workbench')
+  await page.getByRole('button', { name: 'Create' }).click()
+  await page.locator('.list-breadcrumbs').getByRole('button', { name: 'Household', exact: true }).click()
+
+  const todoEntry = page.getByRole('textbox', { name: 'Add task to Todo' })
+  await todoEntry.fill('Folder move test')
+  await todoEntry.press('Enter')
+  await page.getByRole('button', { name: 'Options for Folder move test' }).click()
+  const dialog = page.getByRole('dialog')
+  const project = dialog.getByLabel('Project', { exact: true })
+  const section = dialog.getByLabel('Section', { exact: true })
+  await expect(section.locator('option')).toHaveText(['Todo', 'Top shelf'])
+  await section.selectOption({ label: 'Top shelf' })
+
+  await project.selectOption({ label: 'Garage' })
+  await expect(section.locator('option')).toHaveText(['Todo', 'Workbench'])
+  await expect(section).toHaveValue('')
+  await section.selectOption({ label: 'Workbench' })
+  await expect.poll(() => storedTask(page, 'Folder move test').then((task) => [Boolean(task?.projectId), Boolean(task?.sectionId)])).toEqual([true, true])
+
+  await project.selectOption({ label: 'Top level' })
+  await expect(section.locator('option')).toHaveText(['Todo', 'Top shelf'])
+  await expect.poll(() => storedTask(page, 'Folder move test').then((task) => [task?.projectId, task?.sectionId])).toEqual([undefined, undefined])
+
+  await project.selectOption({ label: 'Garage' })
+  await section.selectOption({ label: 'Workbench' })
+  await dialog.getByLabel('List', { exact: true }).selectOption({ label: 'Personal' })
+  await expect(project).toHaveValue('')
+  await expect.poll(() => storedTask(page, 'Folder move test').then((task) => [task?.listId, task?.projectId, task?.sectionId])).toEqual(['personal', undefined, undefined])
+})
+
 test('searches every list and manages archived task results', async ({ page }) => {
   await page.getByRole('textbox', { name: 'New task' }).fill('Archived search target')
   await page.getByRole('textbox', { name: 'New task' }).press('Enter')
