@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { expect, test, type Page } from '@playwright/test'
+import { addDays, dateKey } from '../../src/domain.js'
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/')
@@ -51,6 +52,76 @@ test('renders Start New Day when an open page crosses midnight', async ({ page }
 
   await page.clock.runFor(2_000)
   await expect(page.getByRole('button', { name: /Start new day/ })).toBeVisible()
+})
+
+test('keeps reusable section tasks and future schedules across a new day', async ({ page }) => {
+  const now = new Date()
+  const activeDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12)
+  const futureDate = addDays(activeDate, 5)
+  const futureToken = `${futureDate.getMonth() + 1}/${futureDate.getDate()}`
+  await page.clock.install({ time: activeDate })
+  await page.reload()
+  await page.getByLabel('Planning range').getByRole('button', { name: 'Lists' }).click()
+  await page.locator('.list-grid').getByRole('button', { name: /^Personal\b/ }).click()
+  await page.getByRole('button', { name: 'New section' }).click()
+  await page.getByRole('textbox', { name: 'Section name' }).fill('Reusable routine')
+  await page.getByRole('button', { name: 'Create', exact: true }).click()
+  const entry = page.getByRole('textbox', { name: 'Add task to Reusable routine' })
+  for (const title of ['Reusable task', `Future pending ${futureToken}`, `Future completed ${futureToken}`, 'Repeating task 7d', 'Manually archived']) {
+    await entry.fill(title)
+    await entry.press('Enter')
+    await expect(entry).toHaveValue('')
+    await expect(page.getByRole('button', { name: title.replace(/ (?:\d+\/\d+|7d)$/, ''), exact: true })).toBeVisible()
+  }
+
+  await page.getByRole('button', { name: 'Add Reusable task to Today' }).click()
+  await page.getByRole('button', { name: 'Complete Reusable task', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Uncheck Reusable task', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await page.getByRole('button', { name: 'Options for Reusable task' }).click()
+  await expect(page.getByLabel('Due date', { exact: true })).toHaveValue(dateKey(activeDate))
+  await page.getByRole('button', { name: 'Done', exact: true }).click()
+  await page.getByRole('button', { name: 'Uncheck Reusable task', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Complete Reusable task', exact: true })).toHaveAttribute('aria-pressed', 'false')
+  await page.getByRole('button', { name: 'Complete Reusable task', exact: true }).click()
+
+  await expect(page.getByRole('button', { name: 'Complete Future pending', exact: true })).toHaveAttribute('aria-pressed', 'false')
+  await page.getByRole('button', { name: 'Complete Future completed', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Uncheck Future completed', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await page.getByRole('button', { name: 'Complete Repeating task', exact: true }).click()
+  await page.getByRole('button', { name: 'Options for Manually archived' }).click()
+  await page.getByRole('button', { name: 'Archive task', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Manually archived', exact: true })).toHaveCount(0)
+
+  await page.clock.setFixedTime(addDays(activeDate, 1))
+  await page.reload()
+  await page.getByRole('button', { name: /Start new day/ }).click()
+  await page.getByLabel('Planning range').getByRole('button', { name: 'Lists' }).click()
+  await page.locator('.list-grid').getByRole('button', { name: /^Personal\b/ }).click()
+  await expect(page.getByRole('button', { name: 'Add Reusable task to Today', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Add Future completed to Today', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Complete Future pending', exact: true })).toHaveAttribute('aria-pressed', 'false')
+  await expect(page.getByRole('button', { name: 'Complete Repeating task', exact: true })).toHaveAttribute('aria-pressed', 'false')
+  await expect(page.getByRole('button', { name: 'Manually archived', exact: true })).toHaveCount(0)
+
+  await page.getByRole('button', { name: 'Options for Reusable task' }).click()
+  await expect(page.getByLabel('Due date', { exact: true })).toHaveValue('')
+  await expect(page.getByLabel('Last completed', { exact: true })).toHaveValue(dateKey(activeDate))
+  await page.getByRole('button', { name: 'Done', exact: true }).click()
+  await page.getByRole('button', { name: 'Options for Future pending' }).click()
+  await expect(page.getByLabel('Due date', { exact: true })).toHaveValue(dateKey(futureDate))
+  await page.getByRole('button', { name: 'Done', exact: true }).click()
+  await page.getByRole('button', { name: 'Options for Repeating task' }).click()
+  await expect(page.getByLabel('Due date', { exact: true })).toHaveValue(dateKey(addDays(activeDate, 7)))
+  await page.getByRole('button', { name: 'Done', exact: true }).click()
+
+  await page.locator('.list-breadcrumbs').getByRole('button', { name: 'Lists', exact: true }).click()
+  await filterTaskSearch(page, 'Show done')
+  await expect(page.getByRole('button', { name: 'Open Repeating task', exact: true })).toHaveCount(0)
+  await filterTaskSearch(page, 'Show due')
+  await expect(page.getByRole('button', { name: 'Open Repeating task', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Open Future pending', exact: true })).toBeVisible()
+  await filterTaskSearch(page, 'Show archived')
+  await expect(page.getByRole('button', { name: 'Restore Manually archived', exact: true })).toBeVisible()
 })
 
 test('creates a future-dated task from its subject and edits it with the date picker', async ({ page }) => {
@@ -123,7 +194,7 @@ test('adds, edits, and completes tasks offline without randomUUID', async ({ pag
     const task = tasks.find((item) => item.title === 'Offline task edited')
     return { task, completed: events.some((event) => event.taskId === task?.id && event.action === 'completed') }
   })
-  expect(stored.task).toMatchObject({ title: 'Offline task edited', archived: true })
+  expect(stored.task).toMatchObject({ title: 'Offline task edited', archived: false })
   expect(stored.completed).toBe(true)
 })
 

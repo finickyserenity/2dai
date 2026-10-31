@@ -407,9 +407,11 @@ function App({ onRefreshApp }: AppProps) {
       }
 
       await db.tasks.update(task.id, {
-        nextDueAt: nextDueDate(storedTask, new Date(`${effectiveDate}T12:00:00`)),
+        nextDueAt: action === 'completed' && !storedTask.intervalDays
+          ? storedTask.nextDueAt
+          : nextDueDate(storedTask, new Date(`${effectiveDate}T12:00:00`)),
         lastCompletedAt: action === 'completed' && !isCatchUp ? now.toISOString() : storedTask.lastCompletedAt,
-        archived: action === 'completed' && !storedTask.intervalDays,
+        archived: storedTask.archived,
         ...action === 'completed' && !isCatchUp
           ? observedTimeChanges(storedTask, effectiveDate, timeKey(now))
           : {},
@@ -439,7 +441,19 @@ function App({ onRefreshApp }: AppProps) {
   }
 
   async function startNewDay() {
-    await db.settings.put({ key: 'activeDay', value: today })
+    await db.transaction('rw', db.settings, db.tasks, db.events, async () => {
+      const activeDay = (await db.settings.get('activeDay'))?.value ?? snapshot.activeDay
+      if (activeDay >= today) return
+      const events = await db.events.where('effectiveDate').between(activeDay, today, true, false).toArray()
+      const completedTaskIds = new Set(events.filter((event) => event.action === 'completed').map((event) => event.taskId))
+      const updatedAt = new Date().toISOString()
+      await db.tasks.filter((task) => !task.archived && !task.intervalDays && completedTaskIds.has(task.id)).modify({
+        nextDueAt: today,
+        scheduledForPlanner: false,
+        updatedAt,
+      })
+      await db.settings.put({ key: 'activeDay', value: today })
+    })
   }
 
   async function exportData() {

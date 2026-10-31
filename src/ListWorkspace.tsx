@@ -27,7 +27,7 @@ import { createId } from './id'
 import { FilterMenu, type FilterOption } from './FilterMenu'
 import { GrowingTextarea } from './GrowingTextarea'
 import { ImportListDialog } from './ImportListDialog.tsx'
-import { isUnscheduled, isWeekend, parseTaskInput, TITLE_MAX_LENGTH, type ProjectFolder, type Task, type TaskAction, type TaskList, type TaskSection } from './domain'
+import { dateKey, isUnscheduled, isWeekend, parseTaskInput, TITLE_MAX_LENGTH, type ProjectFolder, type Task, type TaskAction, type TaskList, type TaskSection } from './domain'
 
 interface ListWorkspaceProps {
   lists: TaskList[]
@@ -515,7 +515,7 @@ function SheetSection({ section, name, tasks, sectionTasks = [], focusedTaskId, 
         <>
           <div className="raw-table-heading"><span>Done</span><span>Task</span><span>Due</span><span>Repeat</span><span /></div>
           {tasks.map((task, index) => {
-            const isManaged = managedTaskIds.has(task.id)
+            const isManaged = managedTaskIds.has(task.id) || Boolean(task.lastCompletedAt && dateKey(new Date(task.lastCompletedAt)) === activeDay)
             const isNotDue = task.nextDueAt > activeDay
             const unscheduled = isUnscheduled(task)
             return (
@@ -524,7 +524,7 @@ function SheetSection({ section, name, tasks, sectionTasks = [], focusedTaskId, 
                 ? <button className="raw-check raw-schedule" type="button" onClick={() => scheduleTask(task)} aria-label={`Add ${task.title} to Today`} title="Add to Today"><Plus size={16} /></button>
                 : <button className="raw-check" type="button" onClick={() => onManage(task, 'completed')} aria-pressed={isManaged} aria-label={`${isManaged ? 'Uncheck' : 'Complete'} ${task.title}`}><Check size={16} /></button>}
               <TaskName title={task.title} onOpen={() => onEdit(task.id)} onActions={() => onActions(task.id)} />
-              <span>{shortDate(task.nextDueAt)}</span>
+              <span>{unscheduled ? '' : shortDate(task.nextDueAt)}</span>
               <span>{task.intervalDays ? `${task.intervalDays}${task.fixedInterval ? '!' : ''}d` : '—'}</span>
               <div className="raw-row-actions">
                 <button type="button" disabled={index === 0} onClick={() => moveTask(task, -1)} aria-label={`Move ${task.title} up`}><ArrowUp size={15} /></button>
@@ -580,11 +580,8 @@ const TASK_SEARCH_FILTERS: Array<FilterOption<TaskSearchFilter>> = [
   { value: 'archived', option: 'Show archived', label: 'Showing archived', icon: Archive, group: 'archived' },
 ]
 
-// All covers every task still in its list. Due tasks have a date still to meet, done tasks were
-// checked off and are not due again yet (a finished one-off is also archived), and unscheduled
-// tasks have no date at all.
 function matchesSearchFilter(task: Task, filter: TaskSearchFilter, activeDay: string): boolean {
-  const isDone = Boolean(task.lastCompletedAt) && (task.archived || task.nextDueAt > activeDay)
+  const isDone = Boolean(task.lastCompletedAt && dateKey(new Date(task.lastCompletedAt)) === activeDay)
   if (filter === 'archived') return task.archived
   if (filter === 'done') return isDone
   if (task.archived) return false
