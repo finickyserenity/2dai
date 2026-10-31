@@ -43,7 +43,8 @@ interface ListWorkspaceProps {
   // Bumped each time the focused task is asked for again, so it is revealed and highlighted anew.
   focusRequest?: number
   activeDay: string
-  managedTaskIds: Set<string>
+  /** When each task checked off on the active day was checked. */
+  completedAt: Map<string, string>
   onLocationChange: (listId?: string, projectId?: string) => void
   onOpenTask: (task: Task) => void
   onManage: (task: Task, action: TaskAction) => Promise<void>
@@ -61,7 +62,7 @@ export function ListWorkspace({
   focusedTaskId,
   focusRequest = 0,
   activeDay,
-  managedTaskIds,
+  completedAt,
   onLocationChange,
   onOpenTask,
   onManage,
@@ -260,7 +261,7 @@ export function ListWorkspace({
           listId={activeList.id}
           projectId={activeProject?.id}
           activeDay={activeDay}
-          managedTaskIds={managedTaskIds}
+          completedAt={completedAt}
           onManage={onManage}
           onEdit={onEdit}
           onActions={onActions}
@@ -278,7 +279,7 @@ export function ListWorkspace({
             sectionId={section.id}
             projectId={activeProject?.id}
             activeDay={activeDay}
-            managedTaskIds={managedTaskIds}
+            completedAt={completedAt}
             onManage={onManage}
             onEdit={onEdit}
             onActions={onActions}
@@ -412,7 +413,8 @@ interface SheetSectionProps {
   sectionId?: string
   projectId?: string
   activeDay: string
-  managedTaskIds: Set<string>
+  /** When each task checked off on the active day was checked. */
+  completedAt: Map<string, string>
   onManage: (task: Task, action: TaskAction) => Promise<void>
   onEdit: (taskId: string, tab?: 'details' | 'notes') => void
   onActions: (taskId: string) => void
@@ -421,7 +423,7 @@ interface SheetSectionProps {
   canMoveSectionDown?: boolean
 }
 
-function SheetSection({ section, name, tasks, sectionTasks = [], focusedTaskId, focusRequest, listId, sectionId, projectId, activeDay, managedTaskIds, onManage, onEdit, onActions, onMoveSection, canMoveSectionUp, canMoveSectionDown }: SheetSectionProps) {
+function SheetSection({ section, name, tasks, sectionTasks = [], focusedTaskId, focusRequest, listId, sectionId, projectId, activeDay, completedAt, onManage, onEdit, onActions, onMoveSection, canMoveSectionUp, canMoveSectionDown }: SheetSectionProps) {
   const [entry, setEntry] = useState('')
   const storageScope = `${listId}:${projectId ?? 'root'}:${sectionId ?? 'todo'}`
   const collapseStorageKey = `2dai:section-collapsed:${storageScope}`
@@ -471,9 +473,17 @@ function SheetSection({ section, name, tasks, sectionTasks = [], focusedTaskId, 
     if (await addListTask(entry, { listId, projectId, sectionId }, activeDay)) setEntry('')
   }
 
+  // Tasks checked off today sink below the rest in the order they were checked, until the next day
+  // puts them back in their places. Only the display changes; their stored order stays put.
+  const checkedAt = (task: Task) => completedAt.get(task.id)
+    ?? (task.lastCompletedAt && dateKey(new Date(task.lastCompletedAt)) === activeDay ? task.lastCompletedAt : undefined)
+  const openTasks = tasks.filter((task) => !checkedAt(task))
+  const checkedTasks = tasks.filter((task) => checkedAt(task)).sort((left, right) => checkedAt(left)!.localeCompare(checkedAt(right)!))
+
+  // Reordering is among the tasks still open; the checked ones keep the order they were done in.
   async function moveTask(task: Task, offset: -1 | 1) {
-    const index = tasks.findIndex((item) => item.id === task.id)
-    const other = tasks[index + offset]
+    const index = openTasks.findIndex((item) => item.id === task.id)
+    const other = openTasks[index + offset]
     if (!other) return
     await db.transaction('rw', db.tasks, async () => {
       await db.tasks.update(task.id, { position: other.position })
@@ -516,8 +526,8 @@ function SheetSection({ section, name, tasks, sectionTasks = [], focusedTaskId, 
       {!collapsed && (
         <>
           <div className="raw-table-heading"><span>Done</span><span>Task</span><span>Due</span><span>Repeat</span><span /></div>
-          {tasks.map((task, index) => {
-            const isManaged = managedTaskIds.has(task.id) || Boolean(task.lastCompletedAt && dateKey(new Date(task.lastCompletedAt)) === activeDay)
+          {[...openTasks, ...checkedTasks].map((task, index) => {
+            const isManaged = index >= openTasks.length
             const isNotDue = effectiveDueDate(task, activeDay) > activeDay
             const unscheduled = isUnscheduled(task)
             return (
@@ -529,8 +539,8 @@ function SheetSection({ section, name, tasks, sectionTasks = [], focusedTaskId, 
               <span>{unscheduled ? '' : shortDate(task.nextDueAt)}</span>
               <span>{task.intervalDays ? `${task.intervalDays}${task.fixedInterval ? '!' : ''}d` : '—'}</span>
               <div className="raw-row-actions">
-                <button type="button" disabled={index === 0} onClick={() => moveTask(task, -1)} aria-label={`Move ${task.title} up`}><ArrowUp size={15} /></button>
-                <button type="button" disabled={index === tasks.length - 1} onClick={() => moveTask(task, 1)} aria-label={`Move ${task.title} down`}><ArrowDown size={15} /></button>
+                <button type="button" disabled={isManaged || index === 0} onClick={() => moveTask(task, -1)} aria-label={`Move ${task.title} up`}><ArrowUp size={15} /></button>
+                <button type="button" disabled={isManaged || index === openTasks.length - 1} onClick={() => moveTask(task, 1)} aria-label={`Move ${task.title} down`}><ArrowDown size={15} /></button>
                 <button type="button" onClick={() => onEdit(task.id)} aria-label={`Options for ${task.title}`}><MoreHorizontal size={17} /></button>
               </div>
               {showNotes && hasNotes(task.notes) && <InlineNotes notes={task.notes!} onOpen={() => onEdit(task.id, 'notes')} />}

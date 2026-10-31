@@ -261,7 +261,7 @@ function App({ onRefreshApp }: AppProps) {
       if (!existing || existing.createdAt < event.createdAt) events.set(event.taskId, event)
       return events
     }, new Map<string, TaskEvent>())
-  const completedIds = new Set([...managedEvents].filter(([, event]) => event.action === 'completed').map(([taskId]) => taskId))
+  const completedAt = new Map([...managedEvents].filter(([, event]) => event.action === 'completed').map(([taskId, event]) => [taskId, event.createdAt]))
   const managedIds = new Set(managedEvents.keys())
   const plannerFilter = view === 'sheets' ? 'due' : plannerFilters[view]
   const showsManaged = plannerFilter === 'done' || plannerFilter === 'skipped'
@@ -769,7 +769,7 @@ function App({ onRefreshApp }: AppProps) {
             focusedTaskId={sheetTaskId}
             focusRequest={sheetFocusRequest}
             activeDay={snapshot.activeDay}
-            managedTaskIds={completedIds}
+            completedAt={completedAt}
             onLocationChange={openSheet}
             onOpenTask={openTaskInList}
             onManage={manageTask}

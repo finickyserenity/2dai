@@ -736,6 +736,47 @@ test('marks tasks with notes and shows formatted notes in sections that ask for 
   await expect(page.getByRole('button', { name: 'Complete Noted task' })).toBeVisible()
 })
 
+test('sinks tasks checked off today to the bottom of their section until the next day', async ({ page }) => {
+  const now = new Date()
+  const activeDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12)
+  await page.clock.install({ time: activeDate })
+  await page.reload()
+  await page.getByLabel('Planning range').getByRole('button', { name: 'Lists' }).click()
+  await page.locator('.list-grid').getByRole('button', { name: /^Personal\b/ }).click()
+  await page.getByRole('button', { name: 'New section' }).click()
+  await page.getByRole('textbox', { name: 'Section name' }).fill('Routine')
+  await page.getByRole('button', { name: 'Create', exact: true }).click()
+  const entry = page.getByRole('textbox', { name: 'Add task to Routine' })
+  for (const title of ['Step one', 'Step two', 'Step three']) {
+    await entry.fill(`${title} 7d`)
+    await entry.press('Enter')
+    await expect(page.getByRole('button', { name: title, exact: true })).toBeVisible()
+  }
+  const routine = page.locator('.raw-section', { has: page.getByText('Routine', { exact: true }) })
+  const order = () => routine.locator('.raw-task-name')
+  await expect(order()).toHaveText(['Step one', 'Step two', 'Step three'])
+
+  await page.getByRole('button', { name: 'Complete Step two' }).click()
+  await page.getByRole('button', { name: 'Complete Step one' }).click()
+  await expect(order()).toHaveText(['Step three', 'Step two', 'Step one'])
+  // Phones hide the move buttons, so look them up by label rather than role.
+  await expect(page.locator('[aria-label="Move Step two up"]')).toBeDisabled()
+  await expect(page.locator('[aria-label="Move Step three down"]')).toBeDisabled()
+
+  // Unchecking puts a task back in its place among the open ones.
+  await page.getByRole('button', { name: 'Uncheck Step two' }).click()
+  await expect(order()).toHaveText(['Step two', 'Step three', 'Step one'])
+  await page.getByRole('button', { name: 'Complete Step two' }).click()
+  await expect(order()).toHaveText(['Step three', 'Step one', 'Step two'])
+
+  await page.clock.setFixedTime(addDays(activeDate, 1))
+  await page.reload()
+  await page.getByRole('button', { name: /Start new day/ }).click()
+  await page.getByLabel('Planning range').getByRole('button', { name: 'Lists' }).click()
+  await page.locator('.list-grid').getByRole('button', { name: /^Personal\b/ }).click()
+  await expect(order()).toHaveText(['Step one', 'Step two', 'Step three'])
+})
+
 test('gives the notes field the whole sheet while the keyboard is up', async ({ page }) => {
   await page.getByLabel('Planning range').getByRole('button', { name: 'Lists' }).click()
   await page.locator('.list-grid').getByRole('button', { name: /^Personal\b/ }).click()
