@@ -685,6 +685,90 @@ test('holds an overdue task until a day its due filters allow', async ({ page })
   await expect(page.getByRole('button', { name: 'Complete Weekday chore' })).toBeVisible()
 })
 
+test('marks tasks with notes and shows formatted notes in sections that ask for them', async ({ page }) => {
+  await page.getByLabel('Planning range').getByRole('button', { name: 'Lists' }).click()
+  await page.locator('.list-grid').getByRole('button', { name: /^Personal\b/ }).click()
+  const entry = page.getByRole('textbox', { name: 'Add task to Todo' })
+  await entry.fill('Noted task')
+  await entry.press('Enter')
+  await page.getByRole('button', { name: 'Add Noted task to Today' }).click()
+  await page.getByRole('button', { name: 'Options for Noted task' }).click()
+  const dialog = page.getByRole('dialog')
+  await dialog.getByRole('tab', { name: 'Notes' }).click()
+  await dialog.getByRole('textbox', { name: 'Notes' }).fill('Bring **the ladder** and *gloves*\n—-\n__Call first__\n1. hose\n1. rake\n  - leaf\n1. tarp')
+  await dialog.getByRole('button', { name: 'Done' }).click()
+
+  // Hidden notes: a notepad mark ahead of the title, kept out of its name and the title field.
+  const name = page.locator('.raw-task-name', { hasText: 'Noted task' })
+  await expect(name.locator('.notes-mark')).toHaveText('🗒️')
+  await expect(page.getByRole('button', { name: 'Noted task', exact: true })).toBeVisible()
+  await expect(page.locator('.raw-task-notes')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Options for Noted task' }).click()
+  await expect(dialog.getByRole('textbox', { name: 'Title' })).toHaveValue('Noted task')
+  await dialog.getByRole('button', { name: 'Done' }).click()
+
+  // Shown notes: the mark gives way to the formatted notes, and the section remembers.
+  const toggle = page.getByRole('button', { name: 'Show notes in Todo' })
+  await toggle.click()
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true')
+  const notes = page.locator('.raw-task-notes')
+  await expect(notes.locator('strong')).toHaveText('the ladder')
+  await expect(notes.locator('em')).toHaveText('gloves')
+  await expect(notes.locator('u')).toHaveText('Call first')
+  await expect(notes.locator('hr')).toHaveCount(1)
+  await expect(notes.locator('ol > li')).toHaveCount(3)
+  await expect(notes.locator('ol > li ul > li')).toHaveText('leaf')
+  await expect(name.locator('.notes-mark')).toHaveCount(0)
+  await page.reload()
+  await page.getByLabel('Planning range').getByRole('button', { name: 'Lists' }).click()
+  await page.locator('.list-grid').getByRole('button', { name: /^Personal\b/ }).click()
+  await expect(page.getByRole('button', { name: 'Show notes in Todo' })).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.locator('.raw-task-notes strong')).toHaveText('the ladder')
+
+  // A double tap on the notes opens them for editing.
+  await page.locator('.raw-task-notes').dblclick()
+  await expect(dialog.getByRole('tab', { name: 'Notes' })).toHaveAttribute('aria-selected', 'true')
+  await dialog.getByRole('button', { name: 'Done' }).click()
+
+  // Today has no notes view, so it always shows the mark.
+  await page.getByLabel('Planning range').getByRole('button', { name: 'Today' }).click()
+  await expect(page.locator('.task-title', { hasText: 'Noted task' }).locator('.notes-mark')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Complete Noted task' })).toBeVisible()
+})
+
+test('gives the notes field the whole sheet while the keyboard is up', async ({ page }) => {
+  await page.getByLabel('Planning range').getByRole('button', { name: 'Lists' }).click()
+  await page.locator('.list-grid').getByRole('button', { name: /^Personal\b/ }).click()
+  await page.getByRole('button', { name: "Options for Check today's schedule" }).click()
+  const dialog = page.getByRole('dialog')
+  await dialog.getByRole('tab', { name: 'Notes' }).click()
+
+  // Stand in for the keyboard leaving 330px of the window visible.
+  await page.evaluate(() => {
+    document.documentElement.setAttribute('data-keyboard-open', '')
+    document.documentElement.style.setProperty('--app-height', '330px')
+  })
+  const field = dialog.getByRole('textbox', { name: 'Notes' })
+  await field.focus()
+  await field.fill(Array.from({ length: 30 }, (_, line) => `line ${line + 1}`).join('\n'))
+  await expect(dialog.getByRole('tab', { name: 'Details' })).toBeHidden()
+  await expect(dialog.getByRole('button', { name: 'Done' })).toBeHidden()
+  await expect(dialog.getByRole('button', { name: 'Archive task' })).toBeHidden()
+
+  const sizes = await page.evaluate(() => {
+    const sheet = document.querySelector<HTMLElement>('.options-sheet')!
+    const notes = document.querySelector<HTMLTextAreaElement>('.notes-panel textarea')!
+    return { sheetScrolls: sheet.scrollHeight > sheet.clientHeight, sheetBottom: sheet.getBoundingClientRect().bottom, notesBottom: notes.getBoundingClientRect().bottom, notesScrolls: notes.scrollHeight > notes.clientHeight }
+  })
+  expect(sizes).toMatchObject({ sheetScrolls: false, notesScrolls: true })
+  expect(sizes.sheetBottom).toBeLessThanOrEqual(330)
+  expect(sizes.notesBottom).toBeLessThanOrEqual(sizes.sheetBottom)
+
+  // Leaving the field brings the rest of the sheet back.
+  await field.blur()
+  await expect(dialog.getByRole('button', { name: 'Done' })).toBeVisible()
+})
+
 test('edits the title in a growing field and keeps notes on their own tab', async ({ page }) => {
   const entry = page.getByRole('textbox', { name: 'New task' })
   await entry.fill('Notes task')
@@ -1138,7 +1222,8 @@ test('offers copy, open-link and call actions from a long press on a task', asyn
 
   // The planner rows offer the same menu.
   await page.getByLabel('Planning range').getByRole('button', { name: 'Today' }).click()
-  await page.getByText('Call the plumber (555) 123-4567', { exact: true }).click({ button: 'right' })
+  // The title now leads with the notepad mark, since the task has notes.
+  await page.locator('.task-title', { hasText: 'Call the plumber (555) 123-4567' }).click({ button: 'right' })
   await expect(page.getByRole('dialog').getByRole('button', { name: 'Copy text and notes' })).toBeVisible()
 })
 

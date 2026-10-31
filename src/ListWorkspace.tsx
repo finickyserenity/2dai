@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type MouseEvent } from 'react'
 import {
   Archive,
   ArrowDown,
@@ -14,6 +14,7 @@ import {
   Inbox,
   Layers,
   MoreHorizontal,
+  NotebookText,
   Plus,
   RotateCcw,
   Search,
@@ -22,11 +23,13 @@ import {
 } from 'lucide-react'
 import { db } from './db'
 import { keepEntryFocus, submitOnLeave } from './forms'
-import { useLongPress } from './longPress'
+import { DOUBLE_TAP_MS, useLongPress } from './longPress'
 import { createId } from './id'
 import { FilterMenu, type FilterOption } from './FilterMenu'
 import { GrowingTextarea } from './GrowingTextarea'
 import { ImportListDialog } from './ImportListDialog.tsx'
+import { hasNotes } from './notesFormat'
+import { FormattedNotes, NotesMark } from './TaskNotes'
 import { dateKey, effectiveDueDate, isUnscheduled, isWeekend, parseTaskInput, TITLE_MAX_LENGTH, type ProjectFolder, type Task, type TaskAction, type TaskList, type TaskSection } from './domain'
 
 interface ListWorkspaceProps {
@@ -44,7 +47,7 @@ interface ListWorkspaceProps {
   onLocationChange: (listId?: string, projectId?: string) => void
   onOpenTask: (task: Task) => void
   onManage: (task: Task, action: TaskAction) => Promise<void>
-  onEdit: (taskId: string) => void
+  onEdit: (taskId: string, tab?: 'details' | 'notes') => void
   onActions: (taskId: string) => void
 }
 
@@ -364,7 +367,7 @@ function ListIndex({ lists, sections, tasks, projects, activeDay, onOpen, onOpen
             return (
               <article className={`task-search-result${task.archived ? ' archived' : ''}`} key={task.id}>
                 <button className="task-search-copy" type="button" disabled={task.archived} onClick={() => onOpenTask(task)} aria-label={`Open ${task.title}`}>
-                  <strong>{task.title}</strong>
+                  <strong>{hasNotes(task.notes) && <NotesMark />}{task.title}</strong>
                   <span><i style={{ background: list?.color }} /> {list?.name ?? 'Unknown list'}{project ? ` / ${project.name}` : ''}{section ? ` / ${section.name}` : ''}</span>
                 </button>
                 {task.archived ? (
@@ -411,7 +414,7 @@ interface SheetSectionProps {
   activeDay: string
   managedTaskIds: Set<string>
   onManage: (task: Task, action: TaskAction) => Promise<void>
-  onEdit: (taskId: string) => void
+  onEdit: (taskId: string, tab?: 'details' | 'notes') => void
   onActions: (taskId: string) => void
   onMoveSection?: (section: TaskSection, offset: -1 | 1) => Promise<void>
   canMoveSectionUp?: boolean
@@ -420,10 +423,14 @@ interface SheetSectionProps {
 
 function SheetSection({ section, name, tasks, sectionTasks = [], focusedTaskId, focusRequest, listId, sectionId, projectId, activeDay, managedTaskIds, onManage, onEdit, onActions, onMoveSection, canMoveSectionUp, canMoveSectionDown }: SheetSectionProps) {
   const [entry, setEntry] = useState('')
-  const collapseStorageKey = `2dai:section-collapsed:${listId}:${projectId ?? 'root'}:${sectionId ?? 'todo'}`
+  const storageScope = `${listId}:${projectId ?? 'root'}:${sectionId ?? 'todo'}`
+  const collapseStorageKey = `2dai:section-collapsed:${storageScope}`
+  const notesStorageKey = `2dai:section-notes:${storageScope}`
   const holdsFocusedTask = Boolean(focusedTaskId) && tasks.some((task) => task.id === focusedTaskId)
   // A section opens to reveal a task the user asked to see, both on arrival and on a repeat request.
-  const [collapsed, setCollapsed] = useState(() => readCollapsedState(collapseStorageKey) && !holdsFocusedTask)
+  const [collapsed, setCollapsed] = useState(() => readStoredFlag(collapseStorageKey) && !holdsFocusedTask)
+  // Notes shown under each task in place of the notepad mark, remembered per section like collapsing.
+  const [showNotes, setShowNotes] = useState(() => readStoredFlag(notesStorageKey))
   const [seenFocusRequest, setSeenFocusRequest] = useState(focusRequest)
   if (focusRequest !== seenFocusRequest) {
     setSeenFocusRequest(focusRequest)
@@ -433,14 +440,8 @@ function SheetSection({ section, name, tasks, sectionTasks = [], focusedTaskId, 
   const [sectionName, setSectionName] = useState(name)
   const canDelete = sectionTasks.every((task) => task.archived)
 
-  useEffect(() => {
-    try {
-      if (collapsed) localStorage.setItem(collapseStorageKey, 'true')
-      else localStorage.removeItem(collapseStorageKey)
-    } catch {
-      // The section remains usable when browser storage is unavailable.
-    }
-  }, [collapseStorageKey, collapsed])
+  useEffect(() => writeStoredFlag(collapseStorageKey, collapsed), [collapseStorageKey, collapsed])
+  useEffect(() => writeStoredFlag(notesStorageKey, showNotes), [notesStorageKey, showNotes])
 
   async function renameSection(event: FormEvent) {
     event.preventDefault()
@@ -502,6 +503,7 @@ function SheetSection({ section, name, tasks, sectionTasks = [], focusedTaskId, 
           </form>
         ) : <strong>{name}</strong>}
         <span className="raw-section-count">{tasks.length}</span>
+        {!renaming && <button className="raw-section-notes" type="button" onClick={() => setShowNotes((value) => !value)} aria-pressed={showNotes} title={showNotes ? 'Hide notes' : 'Show notes'} aria-label={`Show notes in ${name}`}><NotebookText size={15} /></button>}
         {section && !renaming && (
           <div className="raw-section-actions">
             <button type="button" disabled={!canMoveSectionUp} onClick={() => onMoveSection?.(section, -1)} title="Move section up" aria-label={`Move ${name} up`}><ArrowUp size={15} /></button>
@@ -523,7 +525,7 @@ function SheetSection({ section, name, tasks, sectionTasks = [], focusedTaskId, 
               {unscheduled
                 ? <button className="raw-check raw-schedule" type="button" onClick={() => scheduleTask(task)} aria-label={`Add ${task.title} to Today`} title="Add to Today"><Plus size={16} /></button>
                 : <button className="raw-check" type="button" onClick={() => onManage(task, 'completed')} aria-pressed={isManaged} aria-label={`${isManaged ? 'Uncheck' : 'Complete'} ${task.title}`}><Check size={16} /></button>}
-              <TaskName title={task.title} onOpen={() => onEdit(task.id)} onActions={() => onActions(task.id)} />
+              <TaskName title={task.title} notesMark={!showNotes && hasNotes(task.notes)} onOpen={() => onEdit(task.id)} onActions={() => onActions(task.id)} />
               <span>{unscheduled ? '' : shortDate(task.nextDueAt)}</span>
               <span>{task.intervalDays ? `${task.intervalDays}${task.fixedInterval ? '!' : ''}d` : '—'}</span>
               <div className="raw-row-actions">
@@ -531,6 +533,7 @@ function SheetSection({ section, name, tasks, sectionTasks = [], focusedTaskId, 
                 <button type="button" disabled={index === tasks.length - 1} onClick={() => moveTask(task, 1)} aria-label={`Move ${task.title} down`}><ArrowDown size={15} /></button>
                 <button type="button" onClick={() => onEdit(task.id)} aria-label={`Options for ${task.title}`}><MoreHorizontal size={17} /></button>
               </div>
+              {showNotes && hasNotes(task.notes) && <InlineNotes notes={task.notes!} onOpen={() => onEdit(task.id, 'notes')} />}
             </div>
             )
           })}
@@ -590,11 +593,20 @@ function matchesSearchFilter(task: Task, filter: TaskSearchFilter, activeDay: st
   return true
 }
 
-function readCollapsedState(key: string): boolean {
+function readStoredFlag(key: string): boolean {
   try {
     return localStorage.getItem(key) === 'true'
   } catch {
     return false
+  }
+}
+
+function writeStoredFlag(key: string, value: boolean) {
+  try {
+    if (value) localStorage.setItem(key, 'true')
+    else localStorage.removeItem(key)
+  } catch {
+    // The section remains usable when browser storage is unavailable.
   }
 }
 
@@ -643,7 +655,21 @@ function EditableName({ name, label, onRename }: { name: string; label: string; 
 }
 
 // A list row's title: tap opens the task options, holding opens the actions menu.
-function TaskName({ title, onOpen, onActions }: { title: string; onOpen: () => void; onActions: () => void }) {
+// A task's notes shown under it in a section. A double tap opens them for editing.
+function InlineNotes({ notes, onOpen }: { notes: string; onOpen: () => void }) {
+  const lastTap = useRef(0)
+  function tap(event: MouseEvent) {
+    if (event.timeStamp - lastTap.current < DOUBLE_TAP_MS) {
+      lastTap.current = 0
+      onOpen()
+    } else {
+      lastTap.current = event.timeStamp
+    }
+  }
+  return <div className="raw-task-notes" onClick={tap}><FormattedNotes notes={notes} /></div>
+}
+
+function TaskName({ title, notesMark, onOpen, onActions }: { title: string; notesMark: boolean; onOpen: () => void; onActions: () => void }) {
   const press = useLongPress(onActions, onOpen)
-  return <button className="raw-task-name" type="button" aria-haspopup="dialog" {...press}>{title}</button>
+  return <button className="raw-task-name" type="button" aria-haspopup="dialog" {...press}>{notesMark && <NotesMark />}{title}</button>
 }

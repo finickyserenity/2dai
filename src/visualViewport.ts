@@ -16,6 +16,8 @@ export function fitAppToVisualViewport() {
     }
     const keyboardOpen = viewport.height < root.clientHeight - 1
     const shortfall = keyboardOpen ? 0 : viewportShortfall(viewport.width, viewport.height, screen.width, screen.height, isStandalone())
+    // Lets the page make room while typing, as the notes editor does.
+    root.toggleAttribute('data-keyboard-open', keyboardOpen)
     root.style.setProperty('--viewport-shortfall', `${shortfall}px`)
     root.style.setProperty('--app-height', `${viewport.height + shortfall}px`)
     root.style.setProperty('--app-top', `${appTop(viewport.height, viewport.offsetTop, root.clientHeight)}px`)

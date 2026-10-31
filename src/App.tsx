@@ -38,6 +38,8 @@ import { createId } from './id'
 import { FilterMenu, type FilterOption } from './FilterMenu'
 import { GrowingTextarea } from './GrowingTextarea'
 import { ListWorkspace } from './ListWorkspace'
+import { hasNotes } from './notesFormat'
+import { NotesEditor, NotesMark } from './TaskNotes'
 import { SyncSettings } from './sync/SyncSettings'
 import { parseConnectInput, type ConnectTarget } from './sync/encoding'
 import {
@@ -546,7 +548,7 @@ function App({ onRefreshApp }: AppProps) {
     if (settled.length) setLeavingRows((rows) => settled.reduce(withoutKey, rows))
   }, [leavingRows, managedEvents])
 
-  function openTaskOptions(taskId: string) {
+  function openTaskOptions(taskId: string, tab: OptionsTab = 'details') {
     const task = snapshot.tasks.find((item) => item.id === taskId)
     setTaskTitleDraft(task?.title ?? '')
     setDueFiltersDraft(task?.dueFilters ?? '')
@@ -554,7 +556,7 @@ function App({ onRefreshApp }: AppProps) {
     setLastCompletedTouched(false)
     setNotesDraft(task?.notes ?? '')
     setEffortDuration(task?.effort ?? 1)
-    setOptionsTab('details')
+    setOptionsTab(tab)
     setSelectedTaskId(taskId)
   }
 
@@ -849,7 +851,7 @@ function App({ onRefreshApp }: AppProps) {
                       <article className={`task-row${isManaged ? ' managed' : ''}${isNotDue ? ' not-due' : ''}${leavingHeight !== undefined ? ' leaving' : ''}`} style={leavingHeight !== undefined ? { '--row-height': `${leavingHeight}px` } as CSSProperties : undefined}>
                         <button className="complete-button" type="button" onClick={(event) => completeTask(task, event.currentTarget.closest('.task-row'))} aria-pressed={isChecked} aria-label={`${isChecked ? 'Uncheck' : 'Complete'} ${task.title}`}><Check size={20} /></button>
                         <TaskRowBody onOpen={() => openTaskOptions(task.id)} onOpenInList={() => openTaskInList(task)} onActions={() => setActionsTaskId(task.id)}>
-                          <span className={`task-title${isRare ? ' rare' : ''}`}>{isRare && <Star className="task-title-star" size={15} fill="currentColor" aria-hidden="true" />}{task.title}</span>
+                          <span className={`task-title${isRare ? ' rare' : ''}`}>{isRare && <Star className="task-title-star" size={15} fill="currentColor" aria-hidden="true" />}{hasNotes(task.notes) && <NotesMark />}{task.title}</span>
                           <span className="task-meta">
                             <i style={{ background: list?.color }} /> {list?.name ?? 'Unsorted'}
                             {preferredTime && <><Clock3 size={13} /> {formatTime(preferredTime)}</>}
@@ -947,7 +949,7 @@ function App({ onRefreshApp }: AppProps) {
             {/* Both panels stay mounted in one grid cell so the sheet keeps the height of the taller one. */}
             <div className="sheet-panels">
             <div id="options-panel-notes" role="tabpanel" aria-labelledby="options-tab-notes" className={`notes-panel${optionsTab === 'notes' ? '' : ' inactive'}`}>
-              <textarea aria-label="Notes" value={notesDraft} maxLength={NOTES_MAX_LENGTH} placeholder="Anything else worth remembering about this task" onChange={(event) => setNotesDraft(event.target.value)} />
+              <NotesEditor aria-label="Notes" value={notesDraft} maxLength={NOTES_MAX_LENGTH} placeholder="Anything else worth remembering about this task" onChange={(event) => setNotesDraft(event.target.value)} />
             </div>
             <div id="options-panel-details" role="tabpanel" aria-labelledby="options-tab-details" className={optionsTab === 'details' ? undefined : 'inactive'}>
             <div className="option-grid">
