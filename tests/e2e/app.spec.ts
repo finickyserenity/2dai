@@ -719,6 +719,54 @@ test('switches to the dark theme overnight on an adjustable schedule', async ({ 
   await expect.poll(theme).toBe('light')
 })
 
+test('puts a document left scrolled by a rotation back so taps land where they are drawn', async ({ page }) => {
+  await expect(page.getByRole('heading', { name: 'User' })).toBeVisible()
+  // Stand in for iOS leaving the page scrolled by the status bar's height after rotating.
+  const strand = () => page.evaluate(() => {
+    const filler = document.getElementById('scroll-filler') ?? document.documentElement.appendChild(Object.assign(document.createElement('div'), { id: 'scroll-filler' }))
+    filler.style.height = '200vh'
+    window.scrollTo(0, 62)
+    return window.scrollY
+  })
+  const scrollY = () => page.evaluate(() => window.scrollY)
+
+  expect(await strand()).toBe(62)
+  await page.evaluate(() => window.dispatchEvent(new Event('orientationchange')))
+  await expect.poll(scrollY).toBe(0)
+
+  // While a field has the keyboard up, the page is left where iOS panned it.
+  await page.getByRole('textbox', { name: 'New task' }).focus()
+  expect(await strand()).toBe(62)
+  await page.evaluate(() => window.dispatchEvent(new Event('orientationchange')))
+  await page.waitForTimeout(400)
+  expect(await scrollY()).toBe(62)
+
+  // Closing the keyboard hands it back.
+  await page.getByRole('textbox', { name: 'New task' }).blur()
+  await expect.poll(scrollY).toBe(0)
+})
+
+test('fills the screen when iOS sizes the installed app short of it', async ({ browser }) => {
+  // iOS 26 gives an installed app a viewport 62px shorter than the screen in portrait.
+  const context = await browser.newContext({ viewport: { width: 440, height: 894 }, screen: { width: 440, height: 956 } })
+  await context.addInitScript(() => Object.defineProperty(navigator, 'standalone', { value: true }))
+  const page = await context.newPage()
+  await page.goto('/')
+  const bottom = (selector: string) => page.locator(selector).evaluate((element) => element.getBoundingClientRect().bottom)
+  await expect.poll(() => bottom('.app-shell')).toBe(956)
+  // Page content reaching past the short viewport is what gets iOS to hand over the full screen.
+  expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBe(956)
+
+  await page.getByRole('button', { name: 'Open menu' }).click()
+  expect(await bottom('.settings-panel')).toBe(956)
+  expect(await bottom('.settings-backdrop')).toBe(956)
+
+  // With the keyboard up the app follows the visible area instead.
+  await page.setViewportSize({ width: 440, height: 500 })
+  await expect.poll(() => bottom('.app-shell')).toBe(500)
+  await context.close()
+})
+
 test('adds a pending entry when focus leaves the quick-add box', async ({ page }) => {
   const entry = page.getByRole('textbox', { name: 'New task' })
   await entry.fill('Blur added task')
